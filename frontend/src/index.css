@@ -1,0 +1,97 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  --cursor-color: rgba(139, 92, 246, 0.7);
+}
+
+html {
+  @apply scroll-smooth;
+}
+
+body {
+  @apply bg-white dark:bg-dark-900 text-dark-900 dark:text-white transition-colors duration-300;
+}
+
+/* Ensure content is below fixed navbar */
+main {
+  @apply pt-16;
+}
+
+/* Custom cursor styles */
+.cursor-dot,
+.cursor-outline {
+  @apply pointer-events-none fixed z-50 hidden md:block opacity-0 transform-gpu;
+  transition: opacity 0.3s ease, transform 0.15s ease;
+}
+
+.cursor-dot {
+  @apply w-2 h-2 rounded-full bg-primary-400 -translate-x-1 -translate-y-1;
+  box-shadow: 0 0 10px rgba(139, 92, 246, 0.8), 0 0 20px rgba(139, 92, 246, 0.4);
+}
+
+.cursor-outline {
+  @apply w-8 h-8 rounded-full border-2 border-primary-400 -translate-x-4 -translate-y-4;
+}
+
+/* Hover effects for buttons and links */
+.hover-effect {
+  @apply transition-all duration-300;
+}
+
+.hover-effect:hover {
+  @apply scale-105;
+}
+
+/* Card styles */
+.card {
+  @apply bg-dark-50 dark:bg-dark-800 rounded-xl shadow-lg p-6 transition-all duration-300;
+}
+
+.card:hover {
+  @apply shadow-xl transform -translate-y-1;
+}
+
+/* Gradient text */
+.gradient-text {
+  @apply bg-clip-text text-transparent bg-gradient-to-r from-primary-400 to-indigo-500;
+}
+
+/* Animation delays */
+.delay-100 {
+  animation-delay: 0.1s;
+}
+.delay-200 {
+  animation-delay: 0.2s;
+}
+.delay-300 {
+  animation-delay: 0.3s;
+}
+.delay-400 {
+  animation-delay: 0.4s;
+}
+.delay-500 {
+  animation-delay: 0.5s;
+}
+
+/* Navbar specific styles */
+.nav-link {
+  @apply text-dark-700 dark:text-dark-200 hover:text-primary-500 dark:hover:text-primary-400 transition-colors duration-200 px-2 py-1 rounded-md text-sm font-medium;
+}
+
+.btn-primary {
+  @apply bg-primary-500 hover:bg-primary-600 text-white px-4 py-2 rounded-md text-sm font-medium transition-all duration-200 shadow-sm hover:shadow focus:outline-none focus:ring-2 focus:ring-primary-500 focus:ring-opacity-50;
+}
+
+.btn-secondary {
+  @apply bg-white dark:bg-dark-800 text-dark-900 dark:text-white hover:bg-gray-100 dark:hover:bg-dark-700 px-4 py-2 rounded-md text-sm font-medium transition-all duration-200 shadow-sm hover:shadow border border-gray-300 dark:border-dark-600 focus:outline-none focus:ring-2 focus:ring-primary-500 focus:ring-opacity-50;
+}
+
+.dropdown-item {
+  @apply block px-4 py-2 text-sm text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-dark-700 flex items-center gap-2 transition-colors duration-150;
+}
+
+.mobile-nav-link {
+  @apply flex items-center space-x-3 px-3 py-2 rounded-md text-base font-medium text-dark-900 dark:text-white hover:bg-gray-100 dark:hover:bg-dark-700 transition-colors duration-150;
+}
