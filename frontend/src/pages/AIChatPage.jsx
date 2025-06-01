@@ -207,7 +207,7 @@ const thinkingAnimation = {
 };
 
 const AIChatPage = () => {
-  const { token } = useContext(AuthContext);
+  const { token, user } = useContext(AuthContext);
   const [messages, setMessages] = useState([]);
   const [input, setInput] = useState('');
   const [loading, setLoading] = useState(false);
@@ -217,21 +217,56 @@ const AIChatPage = () => {
   const fileInputRef = useRef(null);
   const [sendAnimation, setSendAnimation] = useState(false);
   
+  // Authorized email address check
+  const isAuthorized = user && user.email === "shresthjindal28@gmail.com";
+  
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
   }, [messages]);
   
   useEffect(() => {
-    // Welcome message from AI
-    setTimeout(() => {
-      setMessages([
-        { 
-          role: 'assistant', 
-          content: "Hello! I'm your AI assistant. How can I help you today?" 
-        }
-      ]);
-    }, 800);
-  }, []);
+    // Welcome message from AI - only show if authorized
+    if (isAuthorized) {
+      setTimeout(() => {
+        setMessages([
+          { 
+            role: 'assistant', 
+            content: "Hello! I'm your AI assistant. How can I help you today?" 
+          }
+        ]);
+      }, 800);
+    }
+  }, [isAuthorized]);
+
+  // Only continue with the rest of the component if the user is authorized
+  if (!isAuthorized) {
+    return (
+      <>
+        <ThreeBackground orbs={8} />
+        <div className="flex flex-col items-center justify-center min-h-screen pt-20 px-4">
+          <motion.div 
+            className="w-full max-w-3xl bg-dark-800/95 backdrop-blur-xl rounded-3xl shadow-2xl overflow-hidden flex flex-col border border-dark-700/30 p-8"
+            initial={{ y: 50, opacity: 0 }}
+            animate={{ y: 0, opacity: 1 }}
+            transition={{ delay: 0.2, duration: 0.6 }}
+          >
+            <div className="flex flex-col items-center justify-center text-center space-y-6">
+              <div className="w-16 h-16 bg-red-500/20 rounded-full flex items-center justify-center">
+                <svg className="w-8 h-8 text-red-500" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
+                </svg>
+              </div>
+              <h2 className="text-3xl font-bold text-white">Access Restricted</h2>
+              <p className="text-xl text-red-400">its paid bro</p>
+              <p className="text-gray-400 max-w-md">
+                This AI feature is restricted to authorized users only. Please contact the administrator if you believe you should have access.
+              </p>
+            </div>
+          </motion.div>
+        </div>
+      </>
+    );
+  }
 
   const handleImageUpload = async (e) => {
     const file = e.target.files[0];

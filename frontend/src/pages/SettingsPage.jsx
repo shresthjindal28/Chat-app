@@ -132,8 +132,12 @@ const SettingsPage = () => {
             body: 'This is how your notifications will look',
             icon: '/chat-icon.svg'
           });
+        } else {
+          setError('Notification permission denied');
         }
       });
+    } else {
+      setError('Notification permission denied');
     }
   };
 
@@ -146,39 +150,25 @@ const SettingsPage = () => {
     setSuccess('');
     
     try {
-      await axios.post(
-        `${import.meta.env.VITE_API_URL}/api/user/notification-action`,
-        { notificationId, action },
-        { headers: { Authorization: `Bearer ${token}` } }
-      );
-      
-      // Show success message
-      setSuccess(action === 'accept' ? 'Friend request accepted!' : 'Friend request declined');
-      
-      // Update notifications list - remove the processed notification
-      setUserNotifications(prev => prev.filter(n => n._id !== notificationId));
-      
-      // If accepted, update friends list
       if (action === 'accept') {
-        // Refetch friends to get the updated list
-        axios.get(`${import.meta.env.VITE_API_URL}/api/user/friends`, {
+        await axios.post(`${import.meta.env.VITE_API_URL}/api/user/accept-friend-request/${notificationId}`, {}, {
           headers: { Authorization: `Bearer ${token}` }
-        })
-        .then(res => setFriends(res.data))
-        .catch(err => console.error("Error refreshing friends list:", err));
+        });
+        setSuccess('Friend request accepted');
+      } else if (action === 'decline') {
+        await axios.post(`${import.meta.env.VITE_API_URL}/api/user/decline-friend-request/${notificationId}`, {}, {
+          headers: { Authorization: `Bearer ${token}` }
+        });
+        setSuccess('Friend request declined');
       }
       
+      // Refresh notifications after action
+      setUserNotifications(prev => prev.filter(n => n._id !== notificationId));
     } catch (err) {
-      console.error(`Error ${action === 'accept' ? 'accepting' : 'declining'} friend request:`, err);
-      setError(err?.response?.data?.error || `Failed to ${action} friend request`);
+      console.error('Error handling friend request:', err);
+      setError('Failed to process friend request');
     } finally {
       setNotificationActionInProgress(null);
-      
-      // Clear messages after 3 seconds
-      setTimeout(() => {
-        setSuccess('');
-        setError('');
-      }, 3000);
     }
   };
 

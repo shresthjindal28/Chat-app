@@ -1,6 +1,7 @@
-import React from 'react'
+import React, { useContext } from 'react'
 import { motion } from 'framer-motion'
 import { Link } from 'react-router-dom'
+import { AuthContext } from '../contexts/AuthContext'
 
 const FeatureCard = ({ icon, title, description }) => (
   <motion.div
@@ -18,6 +19,8 @@ const FeatureCard = ({ icon, title, description }) => (
 )
 
 const LandingPage = () => {
+  const { user } = useContext(AuthContext);
+  
   return (
     <div className="min-h-screen bg-dark-900">
       {/* Hero Section */}
@@ -61,18 +64,29 @@ const LandingPage = () => {
             animate={{ opacity: 1, y: 0 }}
             transition={{ duration: 0.8, delay: 0.4 }}
           >
-            <Link
-              to="/signup"
-              className="px-8 py-4 rounded-full bg-gradient-to-r from-primary-600 to-indigo-500 text-white font-medium text-lg hover:from-primary-500 hover:to-indigo-400 transition-all duration-300 transform hover:scale-105"
-            >
-              Get Started
-            </Link>
-            <Link
-              to="/login"
-              className="px-8 py-4 rounded-full border-2 border-primary-400/30 text-white font-medium text-lg hover:border-primary-400/50 transition-all duration-300 transform hover:scale-105"
-            >
-              Login
-            </Link>
+            {user ? (
+              <Link
+                to="/dashboard"
+                className="px-8 py-4 rounded-full bg-gradient-to-r from-primary-600 to-indigo-500 text-white font-medium text-lg hover:from-primary-500 hover:to-indigo-400 transition-all duration-300 transform hover:scale-105"
+              >
+                Go to Dashboard
+              </Link>
+            ) : (
+              <>
+                <Link
+                  to="/signup"
+                  className="px-8 py-4 rounded-full bg-gradient-to-r from-primary-600 to-indigo-500 text-white font-medium text-lg hover:from-primary-500 hover:to-indigo-400 transition-all duration-300 transform hover:scale-105"
+                >
+                  Get Started
+                </Link>
+                <Link
+                  to="/login"
+                  className="px-8 py-4 rounded-full border-2 border-primary-400/30 text-white font-medium text-lg hover:border-primary-400/50 transition-all duration-300 transform hover:scale-105"
+                >
+                  Login
+                </Link>
+              </>
+            )}
           </motion.div>
         </div>
 

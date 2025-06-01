@@ -1,12 +1,14 @@
-import React, { useRef, useEffect } from 'react';
+import React, { useRef, useEffect, useContext } from 'react';
 import { Link } from 'react-router-dom';
 import { motion } from 'framer-motion';
 import { Canvas } from '@react-three/fiber';
 import { OrbitControls } from '@react-three/drei';
 import FloatingDevices from '../../components/three/FloatingDevices';
+import { AuthContext } from '../../contexts/AuthContext';
 import gsap from 'gsap';
 
 const HeroSection = () => {
+  const { user } = useContext(AuthContext);
   const textRef = useRef(null);
 
   // Mouse hover effect for 3D text
@@ -86,41 +88,63 @@ const HeroSection = () => {
           real-time messaging, and stunning visuals.
         </motion.p>
         <div className="flex flex-col sm:flex-row gap-6 justify-center">
-          <motion.div
-            className="hero-button"
-            initial={{ opacity: 0, y: 20 }}
-            animate={{ opacity: 1, y: 0 }}
-            transition={{ duration: 0.6, delay: 0.8 }}
-            whileHover={{ scale: 1.05 }}
-            whileTap={{ scale: 0.98 }}
-          >
-            <Link
-              to="/signup"
-              className="relative overflow-hidden group px-8 py-4 rounded-full bg-gradient-to-r from-primary-600 to-indigo-500 text-white font-medium text-lg shadow-lg shadow-primary-500/20"
+          {user ? (
+            <motion.div
+              className="hero-button"
+              initial={{ opacity: 0, y: 20 }}
+              animate={{ opacity: 1, y: 0 }}
+              transition={{ duration: 0.6, delay: 0.8 }}
+              whileHover={{ scale: 1.05 }}
+              whileTap={{ scale: 0.98 }}
             >
-              <span className="relative z-10">Get Started</span>
-              <span className="absolute inset-0 bg-gradient-to-r from-primary-400 to-indigo-400 opacity-0 group-hover:opacity-100 transition-opacity duration-300 transform group-hover:scale-110" />
-              <span className="absolute -inset-px rounded-full bg-gradient-to-r from-primary-300 to-indigo-300 opacity-70 group-hover:opacity-100 blur-sm transition-all duration-300 group-hover:blur-md"></span>
-            </Link>
-          </motion.div>
-          <motion.div
-            className="hero-button"
-            initial={{ opacity: 0, y: 20 }}
-            animate={{ opacity: 1, y: 0 }}
-            transition={{ duration: 0.6, delay: 1 }}
-            whileHover={{ scale: 1.05 }}
-            whileTap={{ scale: 0.98 }}
-          >
-            <Link
-              to="/login"
-              className="relative overflow-hidden group px-8 py-4 rounded-full border-2 border-primary-400/30 font-medium text-lg hover:shadow-lg transition duration-300"
-            >
-              <span className="relative z-10 bg-clip-text text-transparent bg-gradient-to-r from-primary-400 to-indigo-300">
-                Login
-              </span>
-              <span className="absolute inset-0 bg-dark-800/50 opacity-0 group-hover:opacity-100 transition-opacity duration-300" />
-            </Link>
-          </motion.div>
+              <Link
+                to="/dashboard"
+                className="relative overflow-hidden group px-8 py-4 rounded-full bg-gradient-to-r from-primary-600 to-indigo-500 text-white font-medium text-lg shadow-lg shadow-primary-500/20"
+              >
+                <span className="relative z-10">Go to Dashboard</span>
+                <span className="absolute inset-0 bg-gradient-to-r from-primary-400 to-indigo-400 opacity-0 group-hover:opacity-100 transition-opacity duration-300 transform group-hover:scale-110" />
+                <span className="absolute -inset-px rounded-full bg-gradient-to-r from-primary-300 to-indigo-300 opacity-70 group-hover:opacity-100 blur-sm transition-all duration-300 group-hover:blur-md"></span>
+              </Link>
+            </motion.div>
+          ) : (
+            <>
+              <motion.div
+                className="hero-button"
+                initial={{ opacity: 0, y: 20 }}
+                animate={{ opacity: 1, y: 0 }}
+                transition={{ duration: 0.6, delay: 0.8 }}
+                whileHover={{ scale: 1.05 }}
+                whileTap={{ scale: 0.98 }}
+              >
+                <Link
+                  to="/signup"
+                  className="relative overflow-hidden group px-8 py-4 rounded-full bg-gradient-to-r from-primary-600 to-indigo-500 text-white font-medium text-lg shadow-lg shadow-primary-500/20"
+                >
+                  <span className="relative z-10">Get Started</span>
+                  <span className="absolute inset-0 bg-gradient-to-r from-primary-400 to-indigo-400 opacity-0 group-hover:opacity-100 transition-opacity duration-300 transform group-hover:scale-110" />
+                  <span className="absolute -inset-px rounded-full bg-gradient-to-r from-primary-300 to-indigo-300 opacity-70 group-hover:opacity-100 blur-sm transition-all duration-300 group-hover:blur-md"></span>
+                </Link>
+              </motion.div>
+              <motion.div
+                className="hero-button"
+                initial={{ opacity: 0, y: 20 }}
+                animate={{ opacity: 1, y: 0 }}
+                transition={{ duration: 0.6, delay: 1 }}
+                whileHover={{ scale: 1.05 }}
+                whileTap={{ scale: 0.98 }}
+              >
+                <Link
+                  to="/login"
+                  className="relative overflow-hidden group px-8 py-4 rounded-full border-2 border-primary-400/30 font-medium text-lg hover:shadow-lg transition duration-300"
+                >
+                  <span className="relative z-10 bg-clip-text text-transparent bg-gradient-to-r from-primary-400 to-indigo-300">
+                    Login
+                  </span>
+                  <span className="absolute inset-0 bg-dark-800/50 opacity-0 group-hover:opacity-100 transition-opacity duration-300" />
+                </Link>
+              </motion.div>
+            </>
+          )}
         </div>
         <motion.div
           className="absolute bottom-10 left-1/2 transform -translate-x-1/2"

@@ -1,10 +1,8 @@
 import React, { useState, useEffect, useRef, useContext } from 'react';
 import { Link, useLocation, useNavigate } from 'react-router-dom';
-import ThemeToggle from './ThemeToggle';
 import { AuthContext } from '../contexts/AuthContext';
 import { useFriends } from '../contexts/FriendContext';
-import { motion, AnimatePresence } from 'framer-motion';
-import { ThemeContext } from '../contexts/ThemeContext';
+import { AnimatePresence, motion } from 'framer-motion'; // Import motion here
 import axios from 'axios';
 
 // Avatar component to handle both image and text fallback
@@ -94,28 +92,6 @@ const NotificationItem = ({ notification, onAction, onMarkAsRead }) => {
     }
   };
 
-  const getNotificationIcon = () => {
-    switch (type) {
-      case 'friend_request':
-        return (
-          <svg className="w-5 h-5 text-blue-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M18 9v3m0 0v3m0-3h3m-3 0h-3m-2-5a4 4 0 11-8 0 4 4 0 018 0zM3 20a6 6 0 0112 0v1H3v-1z" />
-          </svg>
-        );
-      case 'message':
-        return (
-          <svg className="w-5 h-5 text-green-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M8 10h.01M12 10h.01M16 10h.01M9 16H5a2 2 0 01-2-2V6a2 2 0 012-2h14a2 2 0 012 2v8a2 2 0 01-2 2h-5l-5 5v-5z" />
-          </svg>
-        );
-      default:
-        return (
-          <svg className="w-5 h-5 text-gray-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
-          </svg>
-        );
-    }
-  };
 
   const formatTime = (timestamp) => {
     const date = new Date(timestamp);
@@ -201,11 +177,13 @@ const NotificationDropdown = ({
   }, [onClose]);
 
   return (
-    <motion.div
+    <div
       ref={dropdownRef}
-      initial={{ opacity: 0, y: 10 }}
-      animate={{ opacity: 1, y: 0 }}
-      exit={{ opacity: 0, y: 10 }}
+      style={{
+        opacity: 1,
+        transform: 'translateY(0)',
+        transition: 'opacity 0.2s, transform 0.2s'
+      }}
       className="absolute right-0 mt-2 w-80 bg-white dark:bg-gray-800 rounded-lg shadow-lg overflow-hidden z-50"
     >
       <div className="p-4 border-b border-gray-200 dark:border-gray-700">
@@ -244,33 +222,42 @@ const NotificationDropdown = ({
           ))
         )}
       </div>
-    </motion.div>
+    </div>
   );
 };
 
 const Navbar = () => {
   const { user, token, logout } = useContext(AuthContext);
-  const { friends, addFriend, removeFriend } = useFriends();
+  const { addFriend } = useFriends();
   const [notifications, setNotifications] = useState([]);
   const [showNotifications, setShowNotifications] = useState(false);
   const [showUserMenu, setShowUserMenu] = useState(false);
   const [showMobileMenu, setShowMobileMenu] = useState(false);
   const [isScrolled, setIsScrolled] = useState(false);
-  const { darkMode, toggleDarkMode } = useContext(ThemeContext);
   const location = useLocation();
   const navigate = useNavigate();
 
   // Add back the refs
   const userMenuRef = useRef(null);
+  const notificationRef = useRef(null);
   const mobileMenuRef = useRef(null);
 
-  // Add back click outside handler
+  // Improved click outside handler
   useEffect(() => {
     const handleClickOutside = (event) => {
+      // Handle user menu dropdown
       if (userMenuRef.current && !userMenuRef.current.contains(event.target)) {
         setShowUserMenu(false);
       }
-      if (mobileMenuRef.current && !mobileMenuRef.current.contains(event.target)) {
+      
+      // Handle notification dropdown
+      if (notificationRef.current && !notificationRef.current.contains(event.target)) {
+        setShowNotifications(false);
+      }
+      
+      // Handle mobile menu dropdown
+      if (mobileMenuRef.current && !mobileMenuRef.current.contains(event.target) && 
+          !event.target.closest('[data-mobile-toggle]')) {
         setShowMobileMenu(false);
       }
     };
@@ -400,6 +387,22 @@ const Navbar = () => {
     return 'User';
   };
 
+  // Add this new handler for auth-related navigation
+  const handleAuthNavigation = (e, path) => {
+    e.preventDefault();
+    
+    if (token || user) {
+      // If user is logged in, redirect to dashboard instead
+      navigate('/dashboard');
+    } else {
+      // Otherwise go to the intended auth page
+      navigate(path);
+    }
+    
+    // Close mobile menu if it's open
+    setShowMobileMenu(false);
+  };
+
   return (
     <nav className={`fixed top-0 left-0 right-0 z-50 transition-all duration-300 ${
       isScrolled ? 'bg-white/80 dark:bg-gray-900/80 backdrop-blur-lg shadow-lg' : 'bg-transparent'
@@ -449,9 +452,9 @@ const Navbar = () => {
                 </Link>
 
                 {/* New Notification Bell */}
-                <div className="relative">
+                <div className="relative" ref={notificationRef}>
                   <button
-                    onClick={() => setShowNotifications(!showNotifications)}
+                    onClick={() => setShowNotifications(prev => !prev)}
                     className="p-2 rounded-full hover:bg-gray-100 dark:hover:bg-gray-800 transition-colors relative"
                   >
                     <svg
@@ -492,24 +495,24 @@ const Navbar = () => {
                 <Link
                   to="/login"
                   className="text-dark-300 hover:text-primary-400 transition-colors duration-200"
+                  onClick={(e) => handleAuthNavigation(e, '/login')}
                 >
                   Login
                 </Link>
                 <Link
                   to="/signup"
                   className="px-4 py-2 rounded-full bg-gradient-to-r from-primary-600 to-indigo-500 text-white hover:from-primary-500 hover:to-indigo-400 transition-all duration-200"
+                  onClick={(e) => handleAuthNavigation(e, '/signup')}
                 >
                   Sign Up
                 </Link>
               </>
             )}
 
-            <ThemeToggle />
-
             {token && (
               <div className="relative" ref={userMenuRef}>
                 <button
-                  onClick={() => setShowUserMenu(!showUserMenu)}
+                  onClick={() => setShowUserMenu(prev => !prev)}
                   className="flex items-center space-x-3 focus:outline-none hover:bg-gray-100 dark:hover:bg-gray-800 rounded-full px-2 py-1.5 transition-all duration-200"
                 >
                   <UserAvatar user={user} size="md" />
@@ -533,95 +536,104 @@ const Navbar = () => {
                   </svg>
                 </button>
 
-                {showUserMenu && (
-                  <div className="absolute right-0 mt-2 w-64 rounded-lg bg-white dark:bg-gray-800 shadow-lg py-2 ring-1 ring-black ring-opacity-5">
-                    <div className="px-4 py-3 border-b border-gray-200 dark:border-gray-700">
-                      <div className="flex items-center space-x-3">
-                        <UserAvatar user={user} size="lg" />
-                        <div>
-                          <p className="text-white font-medium">{getDisplayName()}</p>
-                          <p className="text-sm text-dark-300">{user?.email}</p>
+                <AnimatePresence>
+                  {showUserMenu && (
+                    <motion.div 
+                      initial={{ opacity: 0, y: 10 }}
+                      animate={{ opacity: 1, y: 0 }}
+                      exit={{ opacity: 0, y: 10 }}
+                      className="absolute right-0 mt-2 w-64 rounded-lg bg-white dark:bg-gray-800 shadow-lg py-2 ring-1 ring-black ring-opacity-5"
+                    >
+                      <div className="px-4 py-3 border-b border-gray-200 dark:border-gray-700">
+                        <div className="flex items-center space-x-3">
+                          <UserAvatar user={user} size="lg" />
+                          <div>
+                            <p className="text-gray-900 dark:text-white font-medium">{getDisplayName()}</p>
+                            <p className="text-sm text-dark-300">{user?.email}</p>
+                          </div>
                         </div>
                       </div>
-                    </div>
-                    <div className="py-1">
-                      <Link
-                        to="/profile"
-                        className="flex items-center px-4 py-2 text-sm text-dark-300 hover:bg-gray-200 dark:hover:bg-gray-700 hover:text-primary-400"
-                      >
-                        <svg
-                          className="w-5 h-5 mr-3"
-                          fill="none"
-                          stroke="currentColor"
-                          viewBox="0 0 24 24"
+                      <div className="py-1">
+                        <Link
+                          to="/profile"
+                          className="flex items-center px-4 py-2 text-sm text-dark-300 hover:bg-gray-200 dark:hover:bg-gray-700 hover:text-primary-400"
+                          onClick={() => setShowUserMenu(false)}
                         >
-                          <path
-                            strokeLinecap="round"
-                            strokeLinejoin="round"
-                            strokeWidth="2"
-                            d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z"
-                          />
-                        </svg>
-                        Profile
-                      </Link>
-                      <Link
-                        to="/settings"
-                        className="flex items-center px-4 py-2 text-sm text-dark-300 hover:bg-gray-200 dark:hover:bg-gray-700 hover:text-primary-400"
-                      >
-                        <svg
-                          className="w-5 h-5 mr-3"
-                          fill="none"
-                          stroke="currentColor"
-                          viewBox="0 0 24 24"
+                          <svg
+                            className="w-5 h-5 mr-3"
+                            fill="none"
+                            stroke="currentColor"
+                            viewBox="0 0 24 24"
+                          >
+                            <path
+                              strokeLinecap="round"
+                              strokeLinejoin="round"
+                              strokeWidth="2"
+                              d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z"
+                            />
+                          </svg>
+                          Profile
+                        </Link>
+                        <Link
+                          to="/settings"
+                          className="flex items-center px-4 py-2 text-sm text-dark-300 hover:bg-gray-200 dark:hover:bg-gray-700 hover:text-primary-400"
+                          onClick={() => setShowUserMenu(false)}
                         >
-                          <path
-                            strokeLinecap="round"
-                            strokeLinejoin="round"
-                            strokeWidth="2"
-                            d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z"
-                          />
-                          <path
-                            strokeLinecap="round"
-                            strokeLinejoin="round"
-                            strokeWidth="2"
-                            d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"
-                          />
-                        </svg>
-                        Settings
-                      </Link>
-                      <Link
-                        to="/logout"
-                        className="flex items-center px-4 py-2 text-sm text-red-400 hover:bg-gray-200 dark:hover:bg-gray-700"
-                      >
-                        <svg
-                          className="w-5 h-5 mr-3"
-                          fill="none"
-                          stroke="currentColor"
-                          viewBox="0 0 24 24"
+                          <svg
+                            className="w-5 h-5 mr-3"
+                            fill="none"
+                            stroke="currentColor"
+                            viewBox="0 0 24 24"
+                          >
+                            <path
+                              strokeLinecap="round"
+                              strokeLinejoin="round"
+                              strokeWidth="2"
+                              d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z"
+                            />
+                            <path
+                              strokeLinecap="round"
+                              strokeLinejoin="round"
+                              strokeWidth="2"
+                              d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"
+                            />
+                          </svg>
+                          Settings
+                        </Link>
+                        <Link
+                          to="/logout"
+                          className="flex items-center px-4 py-2 text-sm text-red-400 hover:bg-gray-200 dark:hover:bg-gray-700"
+                          onClick={() => setShowUserMenu(false)}
                         >
-                          <path
-                            strokeLinecap="round"
-                            strokeLinejoin="round"
-                            strokeWidth="2"
-                            d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1"
-                          />
-                        </svg>
-                        Logout
-                      </Link>
-                    </div>
-                  </div>
-                )}
+                          <svg
+                            className="w-5 h-5 mr-3"
+                            fill="none"
+                            stroke="currentColor"
+                            viewBox="0 0 24 24"
+                          >
+                            <path
+                              strokeLinecap="round"
+                              strokeLinejoin="round"
+                              strokeWidth="2"
+                              d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1"
+                            />
+                          </svg>
+                          Logout
+                        </Link>
+                      </div>
+                    </motion.div>
+                  )}
+                </AnimatePresence>
               </div>
             )}
           </div>
 
           {/* Mobile menu button */}
           <div className="md:hidden flex items-center space-x-4">
-            <ThemeToggle />
             {token && (
-              <div className="relative">
+              <div className="relative" ref={notificationRef}>
                 <button
-                  onClick={() => setShowNotifications(!showNotifications)}
+                  onClick={() => setShowNotifications(prev => !prev)}
                   className="p-2 rounded-full hover:bg-gray-100 dark:hover:bg-gray-800 transition-colors relative"
                 >
                   <svg
@@ -657,8 +669,9 @@ const Navbar = () => {
               </div>
             )}
             <button
-              onClick={() => setShowMobileMenu(!showMobileMenu)}
+              onClick={() => setShowMobileMenu(prev => !prev)}
               className="inline-flex items-center justify-center p-2 rounded-md text-dark-300 hover:text-primary-400 focus:outline-none"
+              data-mobile-toggle="true"
             >
               <svg
                 className="h-6 w-6"
@@ -721,6 +734,7 @@ const Navbar = () => {
                         ? 'text-primary-400 bg-gray-50 dark:bg-gray-700/50'
                         : 'text-dark-300 hover:text-primary-400 hover:bg-gray-50 dark:hover:bg-gray-700/50'
                     }`}
+                    onClick={() => setShowMobileMenu(false)}
                   >
                     Messages
                   </Link>
@@ -731,6 +745,7 @@ const Navbar = () => {
                         ? 'text-primary-400 bg-gray-50 dark:bg-gray-700/50'
                         : 'text-dark-300 hover:text-primary-400 hover:bg-gray-50 dark:hover:bg-gray-700/50'
                     }`}
+                    onClick={() => setShowMobileMenu(false)}
                   >
                     AI Chat
                   </Link>
@@ -741,24 +756,35 @@ const Navbar = () => {
                         ? 'text-primary-400 bg-gray-50 dark:bg-gray-700/50'
                         : 'text-dark-300 hover:text-primary-400 hover:bg-gray-50 dark:hover:bg-gray-700/50'
                     }`}
+                    onClick={() => setShowMobileMenu(false)}
+                    aria-label="Gallery"
                   >
                     Gallery
                   </Link>
                   <Link
                     to="/profile"
                     className="block px-3 py-2 rounded-md text-base font-medium text-dark-300 hover:text-primary-400 hover:bg-gray-50 dark:hover:bg-gray-700/50"
+                    onClick={() => setShowMobileMenu(false)}
+                    aria-label="Profile"
                   >
                     Profile
                   </Link>
                   <Link
                     to="/settings"
                     className="block px-3 py-2 rounded-md text-base font-medium text-dark-300 hover:text-primary-400 hover:bg-gray-50 dark:hover:bg-gray-700/50"
+                    onClick={() => setShowMobileMenu(false)}
+                    aria-label="Settings"
                   >
                     Settings
                   </Link>
                   <button
-                    onClick={logout}
+                    onClick={() => {
+                      setShowMobileMenu(false);
+                      logout();
+                      navigate('/');
+                    }}
                     className="w-full text-left px-3 py-2 rounded-md text-base font-medium text-red-400 hover:bg-red-50 dark:hover:bg-red-900/20"
+                    aria-label="Logout"
                   >
                     Logout
                   </button>
@@ -768,12 +794,14 @@ const Navbar = () => {
                   <Link
                     to="/login"
                     className="block px-3 py-2 rounded-md text-base font-medium text-dark-300 hover:text-primary-400 hover:bg-gray-50 dark:hover:bg-gray-700/50"
+                    onClick={(e) => handleAuthNavigation(e, '/login')}
                   >
                     Login
                   </Link>
                   <Link
                     to="/signup"
                     className="block px-3 py-2 rounded-md text-base font-medium text-dark-300 hover:text-primary-400 hover:bg-gray-50 dark:hover:bg-gray-700/50"
+                    onClick={(e) => handleAuthNavigation(e, '/signup')}
                   >
                     Sign Up
                   </Link>
