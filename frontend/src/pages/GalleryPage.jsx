@@ -129,3 +129,4 @@ const GalleryPage = () => {
 };
 
 export default GalleryPage;
+// No changes needed here for the frontend.

@@ -35,7 +35,7 @@ const SignupPage = () => {
     }
     setLoading(true);
     try {
-      await axios.post(
+      const response = await axios.post(
         `${import.meta.env.VITE_API_URL}/api/auth/signup`,
         {
           username: formData.username,
@@ -43,19 +43,45 @@ const SignupPage = () => {
           password: formData.password
         },
         {
-          // Add withCredentials if backend uses cookies/sessions
           withCredentials: true,
-          // Add timeout for better error handling
-          timeout: 5000
+          timeout: 30000, // Increased to 30 seconds
+          headers: {
+            'Content-Type': 'application/json'
+          }
         }
       );
+      
+      console.log('Signup successful:', response.data);
       setLoading(false);
-      navigate('/login'); // redirect to login after signup
+      
+      // Show success message before redirecting
+      setError('');
+      alert('Account created successfully! Redirecting to login...');
+      
+      // Redirect to login after a short delay
+      setTimeout(() => {
+        navigate('/login');
+      }, 1000);
+      
     } catch (err) {
       setLoading(false);
-      // Improved error message for network issues
-      if (err && err.code === 'ERR_NETWORK') {
-        setError('Cannot connect to backend. Is your backend running at ' + import.meta.env.VITE_API_URL + '?');
+      console.error('Signup error:', err, err?.response);
+      
+      // Better error handling
+      if (err.code === 'ECONNABORTED') {
+        setError(
+          'Request timed out. The backend server may be waking up or is slow to respond. ' +
+          'Please wait a few seconds and try again. ' +
+          'Backend URL: ' + import.meta.env.VITE_API_URL
+        );
+      } else if (err.code === 'ERR_NETWORK') {
+        setError('Cannot connect to server. Please check if the backend is running at ' + import.meta.env.VITE_API_URL);
+      } else if (err.response?.status === 400) {
+        setError(err.response.data?.error || 'Invalid input. Please check your details.');
+      } else if (err.response?.status === 409) {
+        setError('An account with this email or username already exists.');
+      } else if (err.response?.status >= 500) {
+        setError('Server error. Please try again later.');
       } else {
         setError(
           err?.response?.data?.error ||
@@ -63,7 +89,6 @@ const SignupPage = () => {
           'Signup failed. Please try again.'
         );
       }
-      console.error('Signup error:', err, err?.response);
     }
   };
 

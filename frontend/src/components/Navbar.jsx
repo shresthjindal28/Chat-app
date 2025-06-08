@@ -2,244 +2,23 @@ import React, { useState, useEffect, useRef, useContext } from 'react';
 import { Link, useLocation, useNavigate } from 'react-router-dom';
 import { AuthContext } from '../contexts/AuthContext';
 import { useFriends } from '../contexts/FriendContext';
-import { AnimatePresence, motion } from 'framer-motion'; // Import motion here
+import { AnimatePresence, motion } from 'framer-motion';
 import axios from 'axios';
-
-// Avatar component to handle both image and text fallback
-const UserAvatar = ({ user, size = 'md' }) => {
-  // Determine sizes based on the size prop
-  const sizes = {
-    sm: "w-6 h-6",
-    md: "w-8 h-8", 
-    lg: "w-10 h-10",
-    xl: "w-12 h-12"
-  };
-
-  // Get profile image URL
-  const getProfileImageUrl = () => {
-    if (user) {
-      if (user.profileImage) return user.profileImage;
-      if (user.avatar) return user.avatar;
-      if (user.photoURL) return user.photoURL;
-      if (user.picture) return user.picture;
-    }
-    return null;
-  };
-
-  // Get display name for fallback text
-  const getName = () => {
-    if (user) {
-      if (user.displayName) return user.displayName;
-      if (user.username) return user.username;
-      if (user.name) return user.name;
-      if (user.email) return user.email.split('@')[0];
-    }
-    return 'User';
-  };
-
-  const getUserInitial = () => {
-    const name = getName();
-    return name !== 'User' ? name.charAt(0).toUpperCase() : 'U';
-  };
-
-  const profileImageUrl = getProfileImageUrl();
-
-  return (
-    <div className={`${sizes[size]} rounded-full overflow-hidden flex items-center justify-center bg-gradient-to-br from-primary-400 to-secondary-500`}>
-      {profileImageUrl ? (
-        <img 
-          src={profileImageUrl} 
-          alt="Profile" 
-          className="w-full h-full object-cover"
-          onError={(e) => {
-            e.target.onerror = null; 
-            e.target.style.display = 'none';
-            e.target.parentNode.classList.add('flex', 'items-center', 'justify-center', 'text-white');
-            e.target.parentNode.innerHTML = getUserInitial();
-          }}
-        />
-      ) : (
-        <span className="text-white font-bold">
-          {getUserInitial()}
-        </span>
-      )}
-    </div>
-  );
-};
-
-// New NotificationItem component
-const NotificationItem = ({ notification, onAction, onMarkAsRead }) => {
-  const { sender, type, content, createdAt, read } = notification;
-  const navigate = useNavigate();
-
-  const handleClick = () => {
-    if (!read) {
-      onMarkAsRead(notification._id);
-    }
-    
-    switch (type) {
-      case 'friend_request':
-        // Handle friend request click
-        break;
-      case 'message':
-        navigate('/chat');
-        break;
-      case 'friend_accepted':
-        navigate('/chat');
-        break;
-      default:
-        break;
-    }
-  };
-
-
-  const formatTime = (timestamp) => {
-    const date = new Date(timestamp);
-    const now = new Date();
-    const diffInSeconds = Math.floor((now - date) / 1000);
-
-    if (diffInSeconds < 60) return 'just now';
-    if (diffInSeconds < 3600) return `${Math.floor(diffInSeconds / 60)}m ago`;
-    if (diffInSeconds < 86400) return `${Math.floor(diffInSeconds / 3600)}h ago`;
-    return date.toLocaleDateString();
-  };
-
-  return (
-    <div 
-      onClick={handleClick}
-      className={`p-3 hover:bg-gray-50 dark:hover:bg-gray-700/50 cursor-pointer transition-colors duration-200 ${
-        !read ? 'bg-blue-50 dark:bg-blue-900/20' : ''
-      }`}
-    >
-      <div className="flex items-start space-x-3">
-        <div className="flex-shrink-0">
-          <UserAvatar user={sender} size="sm" />
-        </div>
-        <div className="flex-1 min-w-0">
-          <div className="flex items-center justify-between">
-            <p className="text-sm font-medium text-gray-900 dark:text-white">
-              {sender?.displayName || sender?.username || 'Unknown User'}
-            </p>
-            <span className="text-xs text-gray-500 dark:text-gray-400">
-              {formatTime(createdAt)}
-            </span>
-          </div>
-          <p className="text-sm text-gray-500 dark:text-gray-400 mt-1">
-            {content}
-          </p>
-          {type === 'friend_request' && (
-            <div className="mt-2 flex space-x-2">
-              <button
-                onClick={(e) => {
-                  e.stopPropagation();
-                  onAction(notification._id, 'accept');
-                }}
-                className="px-3 py-1 text-xs font-medium text-white bg-blue-600 rounded-md hover:bg-blue-700 transition-colors duration-200"
-              >
-                Accept
-              </button>
-              <button
-                onClick={(e) => {
-                  e.stopPropagation();
-                  onAction(notification._id, 'decline');
-                }}
-                className="px-3 py-1 text-xs font-medium text-gray-700 bg-gray-100 rounded-md hover:bg-gray-200 dark:text-gray-300 dark:bg-gray-700 dark:hover:bg-gray-600 transition-colors duration-200"
-              >
-                Decline
-              </button>
-            </div>
-          )}
-        </div>
-      </div>
-    </div>
-  );
-};
-
-// New NotificationDropdown component
-const NotificationDropdown = ({ 
-  notifications, 
-  onMarkAsRead, 
-  onClearAll, 
-  onAction,
-  onClose 
-}) => {
-  const dropdownRef = useRef(null);
-
-  useEffect(() => {
-    const handleClickOutside = (event) => {
-      if (dropdownRef.current && !dropdownRef.current.contains(event.target)) {
-        onClose();
-      }
-    };
-
-    document.addEventListener('mousedown', handleClickOutside);
-    return () => document.removeEventListener('mousedown', handleClickOutside);
-  }, [onClose]);
-
-  return (
-    <div
-      ref={dropdownRef}
-      style={{
-        opacity: 1,
-        transform: 'translateY(0)',
-        transition: 'opacity 0.2s, transform 0.2s'
-      }}
-      className="absolute right-0 mt-2 w-80 bg-white dark:bg-gray-800 rounded-lg shadow-lg overflow-hidden z-50"
-    >
-      <div className="p-4 border-b border-gray-200 dark:border-gray-700">
-        <div className="flex items-center justify-between">
-          <h3 className="text-lg font-semibold text-gray-900 dark:text-white">
-            Notifications
-          </h3>
-          {notifications.length > 0 && (
-            <button
-              onClick={onClearAll}
-              className="text-sm text-red-600 hover:text-red-700 dark:text-red-400 dark:hover:text-red-300"
-            >
-              Clear all
-            </button>
-          )}
-        </div>
-      </div>
-      <div className="max-h-96 overflow-y-auto">
-        {notifications.length === 0 ? (
-          <div className="p-8 text-center">
-            <div className="w-12 h-12 mx-auto mb-3 text-gray-400 dark:text-gray-500">
-              <svg fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M15 17h5l-1.405-1.405A2.032 2.032 0 0118 14.158V11a6.002 6.002 0 00-4-5.659V5a2 2 0 10-4 0v.341C7.67 6.165 6 8.388 6 11v3.159c0 .538-.214 1.055-.595 1.436L4 17h5m6 0v1a3 3 0 11-6 0v-1m6 0H9" />
-              </svg>
-            </div>
-            <p className="text-gray-500 dark:text-gray-400">No notifications yet</p>
-          </div>
-        ) : (
-          notifications.map((notification) => (
-            <NotificationItem
-              key={notification._id}
-              notification={notification}
-              onAction={onAction}
-              onMarkAsRead={onMarkAsRead}
-            />
-          ))
-        )}
-      </div>
-    </div>
-  );
-};
+import { SocketContext } from "../contexts/SocketContext";
+import UserAvatar from './UserAvatar';
+import NotificationBell from './NotificationBell';
 
 const Navbar = () => {
   const { user, token, logout } = useContext(AuthContext);
   const { addFriend } = useFriends();
-  const [notifications, setNotifications] = useState([]);
-  const [showNotifications, setShowNotifications] = useState(false);
   const [showUserMenu, setShowUserMenu] = useState(false);
   const [showMobileMenu, setShowMobileMenu] = useState(false);
   const [isScrolled, setIsScrolled] = useState(false);
   const location = useLocation();
   const navigate = useNavigate();
 
-  // Add back the refs
+  // Refs
   const userMenuRef = useRef(null);
-  const notificationRef = useRef(null);
   const mobileMenuRef = useRef(null);
 
   // Improved click outside handler
@@ -248,11 +27,6 @@ const Navbar = () => {
       // Handle user menu dropdown
       if (userMenuRef.current && !userMenuRef.current.contains(event.target)) {
         setShowUserMenu(false);
-      }
-      
-      // Handle notification dropdown
-      if (notificationRef.current && !notificationRef.current.contains(event.target)) {
-        setShowNotifications(false);
       }
       
       // Handle mobile menu dropdown
@@ -266,96 +40,6 @@ const Navbar = () => {
     return () => document.removeEventListener('mousedown', handleClickOutside);
   }, []);
 
-  // Fetch notifications
-  const fetchNotifications = async () => {
-    if (!token) return;
-    
-    try {
-      const response = await axios.get(
-        `${import.meta.env.VITE_API_URL}/api/user/notifications`,
-        { 
-          headers: { 
-            Authorization: `Bearer ${token}`,
-            'Content-Type': 'application/json'
-          }
-        }
-      );
-
-      if (response.data && Array.isArray(response.data)) {
-        setNotifications(response.data.sort((a, b) => 
-          new Date(b.createdAt) - new Date(a.createdAt)
-        ));
-      }
-    } catch (error) {
-      console.error("Error fetching notifications:", error);
-    }
-  };
-
-  // Mark notification as read
-  const markNotificationAsRead = async (notificationId) => {
-    if (!token) return;
-
-    try {
-      await axios.post(
-        `${import.meta.env.VITE_API_URL}/api/user/notifications/${notificationId}/read`,
-        {},
-        { headers: { Authorization: `Bearer ${token}` } }
-      );
-
-      setNotifications(prev => 
-        prev.map(n => n._id === notificationId ? { ...n, read: true } : n)
-      );
-    } catch (error) {
-      console.error('Error marking notification as read:', error);
-    }
-  };
-
-  // Clear all notifications
-  const clearAllNotifications = async () => {
-    if (!token) return;
-
-    try {
-      await axios.delete(
-        `${import.meta.env.VITE_API_URL}/api/user/notifications/clear-all`,
-        { headers: { Authorization: `Bearer ${token}` } }
-      );
-      setNotifications([]);
-    } catch (error) {
-      console.error('Error clearing notifications:', error);
-    }
-  };
-
-  // Handle friend request actions
-  const handleFriendRequest = async (notificationId, action) => {
-    if (!token) return;
-
-    try {
-      const notification = notifications.find(n => n._id === notificationId);
-      if (!notification) return;
-
-      if (action === 'accept') {
-        await addFriend(notification.sender._id);
-        await markNotificationAsRead(notificationId);
-      } else if (action === 'decline') {
-        await axios.delete(
-          `${import.meta.env.VITE_API_URL}/api/user/friend-requests/${notificationId}`,
-          { headers: { Authorization: `Bearer ${token}` } }
-        );
-      }
-
-      setNotifications(prev => prev.filter(n => n._id !== notificationId));
-    } catch (error) {
-      console.error('Error handling friend request:', error);
-    }
-  };
-
-  // Fetch notifications on mount and when token changes
-  useEffect(() => {
-    if (token) {
-      fetchNotifications();
-    }
-  }, [token]);
-
   useEffect(() => {
     const handleScroll = () => {
       setIsScrolled(window.scrollY > 20);
@@ -367,7 +51,6 @@ const Navbar = () => {
 
   // Close dropdowns when route changes
   useEffect(() => {
-    setShowNotifications(false);
     setShowUserMenu(false);
     setShowMobileMenu(false);
   }, [location]);
@@ -391,16 +74,22 @@ const Navbar = () => {
   const handleAuthNavigation = (e, path) => {
     e.preventDefault();
     
-    if (token || user) {
-      // If user is logged in, redirect to dashboard instead
-      navigate('/dashboard');
-    } else {
-      // Otherwise go to the intended auth page
-      navigate(path);
+    try {
+      if (token || user) {
+        // If user is logged in, redirect to dashboard instead
+        navigate('/dashboard');
+      } else {
+        // Otherwise go to the intended auth page
+        navigate(path);
+      }
+      
+      // Close mobile menu if it's open
+      setShowMobileMenu(false);
+    } catch (error) {
+      console.error('Navigation error:', error);
+      // Fallback navigation
+      window.location.href = path;
     }
-    
-    // Close mobile menu if it's open
-    setShowMobileMenu(false);
   };
 
   return (
@@ -451,44 +140,8 @@ const Navbar = () => {
                   Gallery
                 </Link>
 
-                {/* New Notification Bell */}
-                <div className="relative" ref={notificationRef}>
-                  <button
-                    onClick={() => setShowNotifications(prev => !prev)}
-                    className="p-2 rounded-full hover:bg-gray-100 dark:hover:bg-gray-800 transition-colors relative"
-                  >
-                    <svg
-                      className="w-6 h-6 text-gray-600 dark:text-gray-300"
-                      fill="none"
-                      stroke="currentColor"
-                      viewBox="0 0 24 24"
-                    >
-                      <path
-                        strokeLinecap="round"
-                        strokeLinejoin="round"
-                        strokeWidth={2}
-                        d="M15 17h5l-1.405-1.405A2.032 2.032 0 0118 14.158V11a6.002 6.002 0 00-4-5.659V5a2 2 0 10-4 0v.341C7.67 6.165 6 8.388 6 11v3.159c0 .538-.214 1.055-.595 1.436L4 17h5m6 0v1a3 3 0 11-6 0v-1m6 0H9"
-                      />
-                    </svg>
-                    {notifications.length > 0 && (
-                      <span className="absolute top-0 right-0 inline-flex items-center justify-center px-2 py-1 text-xs font-bold leading-none text-white transform translate-x-1/2 -translate-y-1/2 bg-red-500 rounded-full">
-                        {notifications.length}
-                      </span>
-                    )}
-                  </button>
-
-                  <AnimatePresence>
-                    {showNotifications && (
-                      <NotificationDropdown
-                        notifications={notifications}
-                        onMarkAsRead={markNotificationAsRead}
-                        onClearAll={clearAllNotifications}
-                        onAction={handleFriendRequest}
-                        onClose={() => setShowNotifications(false)}
-                      />
-                    )}
-                  </AnimatePresence>
-                </div>
+                {/* NotificationBell Component */}
+                <NotificationBell />
               </>
             ) : (
               <>
@@ -630,44 +283,8 @@ const Navbar = () => {
 
           {/* Mobile menu button */}
           <div className="md:hidden flex items-center space-x-4">
-            {token && (
-              <div className="relative" ref={notificationRef}>
-                <button
-                  onClick={() => setShowNotifications(prev => !prev)}
-                  className="p-2 rounded-full hover:bg-gray-100 dark:hover:bg-gray-800 transition-colors relative"
-                >
-                  <svg
-                    className="w-6 h-6 text-gray-600 dark:text-gray-300"
-                    fill="none"
-                    stroke="currentColor"
-                    viewBox="0 0 24 24"
-                  >
-                    <path
-                      strokeLinecap="round"
-                      strokeLinejoin="round"
-                      strokeWidth={2}
-                      d="M15 17h5l-1.405-1.405A2.032 2.032 0 0118 14.158V11a6.002 6.002 0 00-4-5.659V5a2 2 0 10-4 0v.341C7.67 6.165 6 8.388 6 11v3.159c0 .538-.214 1.055-.595 1.436L4 17h5m6 0v1a3 3 0 11-6 0v-1m6 0H9"
-                    />
-                  </svg>
-                  {notifications.length > 0 && (
-                    <span className="absolute top-0 right-0 inline-flex items-center justify-center px-2 py-1 text-xs font-bold leading-none text-white transform translate-x-1/2 -translate-y-1/2 bg-red-500 rounded-full">
-                      {notifications.length}
-                    </span>
-                  )}
-                </button>
-                <AnimatePresence>
-                  {showNotifications && (
-                    <NotificationDropdown
-                      notifications={notifications}
-                      onMarkAsRead={markNotificationAsRead}
-                      onClearAll={clearAllNotifications}
-                      onAction={handleFriendRequest}
-                      onClose={() => setShowNotifications(false)}
-                    />
-                  )}
-                </AnimatePresence>
-              </div>
-            )}
+            {token && <NotificationBell />}
+            
             <button
               onClick={() => setShowMobileMenu(prev => !prev)}
               className="inline-flex items-center justify-center p-2 rounded-md text-dark-300 hover:text-primary-400 focus:outline-none"

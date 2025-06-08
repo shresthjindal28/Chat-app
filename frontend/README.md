@@ -86,6 +86,7 @@ All routes except `/`, `/login`, `/signup`, `/logout` are protected and require 
 | POST   | `/accept-friend-request`    | Accept friend request              | `{ requestId }`            | Yes  |
 | GET    | `/notifications`            | Get all notifications              |                            | Yes  |
 | POST   | `/mark-notifications-read`  | Mark notifications as read         | `{ ids: [id1, id2, ...] }` | Yes  |
+| DELETE | `/notifications`            | Clear all notifications            |                            | Yes  |
 | POST   | `/notification-action`      | Handle notification action         | `{ notificationId, action }` | Yes  |
 
 ---

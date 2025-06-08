@@ -1,6 +1,7 @@
-import React, { createContext, useContext, useState, useEffect, useRef } from 'react';
+import React, { createContext, useContext, useState, useEffect } from 'react';
 import axios from 'axios';
 import { AuthContext } from './AuthContext';
+import { io } from 'socket.io-client';
 
 const FriendContext = createContext();
 
@@ -17,137 +18,98 @@ export const FriendProvider = ({ children }) => {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
   const { token, user } = useContext(AuthContext);
-  const socketRef = useRef(null);
 
   // Fetch friends list
   const fetchFriends = async () => {
+    if (!token) {
+      setLoading(false);
+      return;
+    }
+    
     try {
+      setLoading(true);
       const response = await axios.get(
         `${import.meta.env.VITE_API_URL}/api/user/friends`,
-        { headers: { Authorization: `Bearer ${token}` } }
+        { headers: { Authorization: `Bearer ${token}` }, timeout: 45000 }
       );
       setFriends(response.data);
       setError(null);
     } catch (err) {
-      setError('Failed to fetch friends');
+      if (err.code === 'ECONNABORTED') {
+        setError(
+          'Request timed out. The backend server may be waking up or is slow to respond. ' +
+          'Please wait a few seconds and try again. ' +
+          'Backend URL: ' + import.meta.env.VITE_API_URL
+        );
+      } else {
+        setError('Failed to fetch friends');
+      }
       console.error('Error fetching friends:', err);
     } finally {
       setLoading(false);
     }
   };
 
-  // Set up WebSocket connection for real-time friend updates
+  // Initial fetch
   useEffect(() => {
-    if (token && user) {
-      const connectWebSocket = () => {
-        try {
-          let apiUrl = import.meta.env.VITE_API_URL;
-          let wsUrl;
+    fetchFriends();
+  }, [token]);
 
-          try {
-            const url = new URL(apiUrl);
-            const wsProtocol = url.protocol === 'https:' ? 'wss:' : 'ws:';
-            wsUrl = `${wsProtocol}//${url.host}/ws/friends`;
-          } catch (e) {
-            console.warn('Could not parse API URL, using fallback method', e);
-            wsUrl = apiUrl.replace(/^http:\/\//i, 'ws://').replace(/^https:\/\//i, 'wss://') + '/ws/friends';
-          }
-
-          socketRef.current = new WebSocket(`${wsUrl}?token=${token}`);
-
-          socketRef.current.addEventListener('open', () => {
-            console.log('WebSocket connected for friend updates');
-          });
-
-          socketRef.current.addEventListener('message', (event) => {
-            try {
-              const data = JSON.parse(event.data);
-              
-              switch (data.type) {
-                case 'friend_added':
-                  setFriends(prev => [...prev, data.friend]);
-                  break;
-                case 'friend_removed':
-                  setFriends(prev => prev.filter(f => f._id !== data.friendId));
-                  break;
-                case 'friend_updated':
-                  setFriends(prev => prev.map(f => 
-                    f._id === data.friend._id ? { ...f, ...data.friend } : f
-                  ));
-                  break;
-                case 'friends_sync':
-                  setFriends(data.friends);
-                  break;
-                default:
-                  console.warn('Unknown friend update type:', data.type);
-              }
-            } catch (err) {
-              console.error('Error processing friend update:', err);
+  // Socket.IO for real-time updates
+  useEffect(() => {
+    if (!token) return;
+    
+    try {
+      const socket = io(import.meta.env.VITE_API_URL, {
+        auth: { token },
+        transports: ["websocket"],
+        reconnectionAttempts: 5,
+        reconnectionDelay: 1000,
+      });
+      
+      socket.on('connect', () => {
+        console.log('Socket.IO connected for friend updates');
+      });
+      
+      socket.on('friend:update', (data) => {
+        console.log('Friend update received:', data);
+        
+        if (data.type === 'added' || data.type === 'accepted') {
+          setFriends(prevFriends => {
+            if (!prevFriends.some(f => f._id === data.friend._id)) {
+              return [...prevFriends, data.friend];
             }
+            return prevFriends;
           });
-
-          socketRef.current.addEventListener('error', (error) => {
-            console.error('WebSocket error:', error);
-          });
-
-          socketRef.current.addEventListener('close', () => {
-            console.log('WebSocket connection closed');
-            // Attempt to reconnect after a delay
-            setTimeout(connectWebSocket, 3000);
-          });
-        } catch (error) {
-          console.error('Error setting up WebSocket:', error);
+        } else if (data.type === 'removed') {
+          setFriends(prevFriends => 
+            prevFriends.filter(f => f._id !== data.friendId)
+          );
         }
-      };
-
-      connectWebSocket();
-
-      // Initial fetch of friends
-      fetchFriends();
-
+        
+        // Refresh the full friends list to ensure consistency
+        setTimeout(() => {
+          fetchFriends();
+        }, 1000);
+      });
+      
+      socket.on('friend:request', (data) => {
+        console.log('New friend request received:', data);
+        // Could trigger a notification update here
+      });
+      
       return () => {
-        if (socketRef.current) {
-          socketRef.current.close();
-        }
+        socket.disconnect();
       };
-    }
-  }, [token, user]);
-
-  // Friend management functions
-  const addFriend = async (friendId) => {
-    try {
-      const response = await axios.post(
-        `${import.meta.env.VITE_API_URL}/api/user/friends/${friendId}`,
-        {},
-        { headers: { Authorization: `Bearer ${token}` } }
-      );
-      setFriends(prev => [...prev, response.data]);
-      return response.data;
     } catch (err) {
-      setError('Failed to add friend');
-      throw err;
+      console.error('Error creating Socket.IO connection:', err);
     }
-  };
-
-  const removeFriend = async (friendId) => {
-    try {
-      await axios.delete(
-        `${import.meta.env.VITE_API_URL}/api/user/friends/${friendId}`,
-        { headers: { Authorization: `Bearer ${token}` } }
-      );
-      setFriends(prev => prev.filter(f => f._id !== friendId));
-    } catch (err) {
-      setError('Failed to remove friend');
-      throw err;
-    }
-  };
+  }, [token]);
 
   const value = {
     friends,
     loading,
     error,
-    addFriend,
-    removeFriend,
     fetchFriends
   };
 
@@ -158,4 +120,4 @@ export const FriendProvider = ({ children }) => {
   );
 };
 
-export default FriendContext; 
+export default FriendContext;

@@ -22,7 +22,8 @@ const ProfilePage = () => {
     setSuccess('');
     try {
       await axios.put(
-        `${import.meta.env.VITE_API_URL}/api/user/me`,
+        // Changed endpoint to match backend
+        `${import.meta.env.VITE_API_URL}/api/user/update-profile`,
         form,
         { headers: { Authorization: `Bearer ${token}` } }
       );
@@ -42,7 +43,7 @@ const ProfilePage = () => {
     formData.append('image', file);
     try {
       const res = await axios.post(
-        `${import.meta.env.VITE_API_URL}/api/user/profile-image`,
+        `${import.meta.env.VITE_API_URL}/api/user/upload-profile-image`,
         formData,
         {
           headers: {

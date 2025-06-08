@@ -1,20 +1,28 @@
 import React, { useState, useEffect, useRef, useContext } from "react";
 import { AuthContext } from "../contexts/AuthContext";
-import { motion } from "framer-motion";
 import axios from "axios";
 import { io } from "socket.io-client";
+import UserProfileDropdown from '../components/UserProfileDropdown';
+import { useFriends } from '../contexts/FriendContext';
+import { motion } from "framer-motion";
 
 const SOCKET_URL = import.meta.env.VITE_API_URL;
 
 const ChatPage = () => {
   const { token, user } = useContext(AuthContext);
+  const { friends, fetchFriends } = useFriends();
   const [peers, setPeers] = useState([]);
+  const [allUsers, setAllUsers] = useState([]);
+  const [peersLoading, setPeersLoading] = useState(true);
+  const [usersLoading, setUsersLoading] = useState(true);
+  const [activeTab, setActiveTab] = useState('friends'); // 'friends' or 'all-users'
   const [selectedPeer, setSelectedPeer] = useState(null);
   const [messages, setMessages] = useState([]);
   const [msgInput, setMsgInput] = useState("");
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [error, setError] = useState("");
   const [unreadCounts, setUnreadCounts] = useState({});
+  const [lastReadTimestamps, setLastReadTimestamps] = useState({}); // For read receipts
   const [peerSearch, setPeerSearch] = useState("");
   const [isRecording, setIsRecording] = useState(false);
   const [recordingTime, setRecordingTime] = useState(0);
@@ -24,16 +32,52 @@ const ChatPage = () => {
   const mediaRecorderRef = useRef(null);
   const audioChunksRef = useRef([]);
   const recordingTimerRef = useRef(null);
+  const avatarRef = useRef(null);
+  const [showProfileDropdown, setShowProfileDropdown] = useState(false);
+  const [friendRequestLoading, setFriendRequestLoading] = useState({});
+  const [successMessage, setSuccessMessage] = useState('');
 
   // Fetch peers
   useEffect(() => {
     if (!token) return;
+    
+    setPeersLoading(true);
     axios
       .get(`${import.meta.env.VITE_API_URL}/api/chat/peers`, {
         headers: { Authorization: `Bearer ${token}` },
+        timeout: 45000 // Increase timeout for cold start
       })
-      .then((res) => setPeers(res.data));
+      .then((res) => {
+        console.log('Peers loaded:', res.data);
+        setPeers(res.data);
+        setError('');
+      })
+      .catch((err) => {
+        console.error('Error loading peers:', err);
+        if (err.code === 'ECONNABORTED') {
+          setError(
+            'Request timed out. The backend server may be waking up or is slow to respond. ' +
+            'Please wait a few seconds and try again. ' +
+            'Backend URL: ' + import.meta.env.VITE_API_URL
+          );
+        } else if (err.code === 'ERR_NETWORK') {
+          setError('Cannot connect to server. Please check if the backend is running at ' + import.meta.env.VITE_API_URL);
+        } else {
+          setError('Failed to load chat users');
+        }
+      })
+      .finally(() => {
+        setPeersLoading(false);
+      });
   }, [token]);
+
+  // Use friends as peers if peers are empty
+  useEffect(() => {
+    if (friends && friends.length > 0 && peers.length === 0 && !peersLoading) {
+      console.log('Using friends as peers:', friends);
+      setPeers(friends);
+    }
+  }, [friends, peers.length, peersLoading]);
 
   // Fetch messages for selected peer
   useEffect(() => {
@@ -41,8 +85,63 @@ const ChatPage = () => {
     axios
       .get(`${import.meta.env.VITE_API_URL}/api/chat/history/${selectedPeer._id}`, {
         headers: { Authorization: `Bearer ${token}` },
+        timeout: 45000
       })
-      .then((res) => setMessages(res.data));
+      .then((res) => setMessages(res.data))
+      .catch((err) => {
+        if (err.code === 'ECONNABORTED') {
+          setError(
+            'Request timed out. The backend server may be waking up or is slow to respond. ' +
+            'Please wait a few seconds and try again. ' +
+            'Backend URL: ' + import.meta.env.VITE_API_URL
+          );
+        }
+      });
+  }, [selectedPeer, token]);
+
+  // Fetch unread counts for all friends on mount and when messages change
+  useEffect(() => {
+    if (!token) return;
+    axios.get(`${import.meta.env.VITE_API_URL}/api/chat/unread-counts`, {
+      headers: { Authorization: `Bearer ${token}` },
+      timeout: 45000
+    })
+    .then(res => setUnreadCounts(res.data))
+    .catch((err) => {
+      if (err.code === 'ECONNABORTED') {
+        setError(
+          'Request timed out. The backend server may be waking up or is slow to respond. ' +
+          'Please wait a few seconds and try again. ' +
+          'Backend URL: ' + import.meta.env.VITE_API_URL
+        );
+      }
+    });
+  }, [token]);
+
+  // Mark messages as read when opening a chat
+  useEffect(() => {
+    if (!selectedPeer || !token) return;
+    axios.post(`${import.meta.env.VITE_API_URL}/api/chat/mark-read/${selectedPeer._id}`, {}, {
+      headers: { Authorization: `Bearer ${token}` },
+      timeout: 45000
+    }).then(() => {
+      setUnreadCounts(prev => ({ ...prev, [selectedPeer._id]: 0 }));
+      // Optionally update lastReadTimestamps for read receipts
+      setLastReadTimestamps(prev => ({
+        ...prev,
+        [selectedPeer._id]: Date.now()
+      }));
+      // Emit socket event for read receipt
+      socketRef.current?.emit('chat:read', { peerId: selectedPeer._id });
+    }).catch((err) => {
+      if (err.code === 'ECONNABORTED') {
+        setError(
+          'Request timed out. The backend server may be waking up or is slow to respond. ' +
+          'Please wait a few seconds and try again. ' +
+          'Backend URL: ' + import.meta.env.VITE_API_URL
+        );
+      }
+    });
   }, [selectedPeer, token]);
 
   // Socket setup
@@ -60,6 +159,7 @@ const ChatPage = () => {
       // Messages we send are already added to state in the sendMessage function
       if (msg.from !== user.id) {
         setMessages((prev) => [...prev, msg]);
+        // Update unread counts if not in current chat
         if (!selectedPeer || msg.from !== selectedPeer._id) {
           setUnreadCounts((prev) => ({
             ...prev,
@@ -67,6 +167,27 @@ const ChatPage = () => {
           }));
         }
       }
+    });
+
+    // Listen for delivery and read receipts
+    socket.on("chat:delivered", ({ messageId }) => {
+      setMessages(prev =>
+        prev.map(m => m._id === messageId ? { ...m, status: "delivered" } : m)
+      );
+    });
+    socket.on("chat:read", ({ peerId, timestamp }) => {
+      // Mark all messages from/to peer as read
+      setMessages(prev =>
+        prev.map(m =>
+          (m.to === peerId || m.from === peerId)
+            ? { ...m, status: "read" }
+            : m
+        )
+      );
+      setLastReadTimestamps(prev => ({
+        ...prev,
+        [peerId]: timestamp || Date.now()
+      }));
     });
 
     return () => socket.disconnect();
@@ -81,16 +202,28 @@ const ChatPage = () => {
   const sendMessage = (e) => {
     e.preventDefault();
     if (!msgInput.trim() || !selectedPeer) return;
+    const tempId = Math.random().toString(36).slice(2);
     const msg = {
+      _id: tempId, // temp id for UI
       from: user.id,
       to: selectedPeer._id,
       type: "text",
       content: msgInput,
       createdAt: new Date().toISOString(),
+      status: "sent"
     };
     setMessages((prev) => [...prev, msg]);
     setMsgInput("");
-    socketRef.current?.emit("chat:message", msg);
+    socketRef.current?.emit("chat:message", msg, (serverMsg) => {
+      // Callback: update with real id and status
+      setMessages(prev =>
+        prev.map(m =>
+          m._id === tempId
+            ? { ...serverMsg, status: "delivered" }
+            : m
+        )
+      );
+    });
   };
 
   // Image upload
@@ -132,6 +265,7 @@ const ChatPage = () => {
             "Content-Type": "multipart/form-data",
             Authorization: `Bearer ${token}`,
           },
+          timeout: 45000
         }
       );
       
@@ -146,8 +280,16 @@ const ChatPage = () => {
         // Socket already handles real-time updates for the receiver side
         // The backend should emit a socket event upon image upload
       }
-    } catch {
-      setError("Failed to send image");
+    } catch (err) {
+      if (err.code === 'ECONNABORTED') {
+        setError(
+          'Request timed out. The backend server may be waking up or is slow to respond. ' +
+          'Please wait a few seconds and try again. ' +
+          'Backend URL: ' + import.meta.env.VITE_API_URL
+        );
+      } else {
+        setError("Failed to send image");
+      }
       // Remove the temporary message on error
       setMessages(prev => prev.filter(msg => msg !== tempMsg));
     }
@@ -178,7 +320,7 @@ const ChatPage = () => {
       recordingTimerRef.current = setInterval(() => {
         setRecordingTime(prevTime => prevTime + 1);
       }, 1000);
-    } catch (error) {
+    } catch {
       setError("Microphone access denied. Please allow microphone access to send voice messages.");
     }
   };
@@ -196,6 +338,8 @@ const ChatPage = () => {
   const handleStopRecording = async () => {
     if (!selectedPeer) return;
     
+    let tempMsg = null;
+    
     try {
       const audioBlob = new Blob(audioChunksRef.current, { type: "audio/webm" });
       
@@ -207,7 +351,7 @@ const ChatPage = () => {
       
       // Create temporary URL for immediate display
       const tempAudioUrl = URL.createObjectURL(audioBlob);
-      const tempMsg = {
+      tempMsg = {
         from: user.id,
         to: selectedPeer._id,
         type: "voice",
@@ -230,6 +374,7 @@ const ChatPage = () => {
             "Content-Type": "multipart/form-data",
             Authorization: `Bearer ${token}`,
           },
+          timeout: 45000
         }
       );
       
@@ -244,10 +389,12 @@ const ChatPage = () => {
         // Socket already handles real-time updates for the receiver side
         // The backend should emit a socket event upon voice upload
       }
-    } catch (error) {
+    } catch  {
       setError("Failed to send voice message");
       // Remove the temporary message on error
-      setMessages(prev => prev.filter(msg => msg !== tempMsg));
+      if (tempMsg) {
+        setMessages(prev => prev.filter(msg => msg !== tempMsg));
+      }
     } finally {
       setIsRecording(false);
     }
@@ -260,9 +407,57 @@ const ChatPage = () => {
     return `${mins < 10 ? "0" : ""}${mins}:${secs < 10 ? "0" : ""}${secs}`;
   };
 
+  // Get the appropriate user list based on active tab
+  const getCurrentUserList = () => {
+    return activeTab === 'friends' ? peers : allUsers;
+  };
+
+  // Check if a user is already a friend
+  const isUserFriend = (userId) => {
+    return friends.some(f => f._id === userId);
+  };
+
+  // Send friend request with better error handling
+  const handleSendFriendRequest = async (userId, username) => {
+    setFriendRequestLoading(prev => ({ ...prev, [userId]: true }));
+    setError('');
+    setSuccessMessage('');
+    
+    try {
+      await axios.post(
+        `${import.meta.env.VITE_API_URL}/api/user/send-friend-request`,
+        { userId },
+        { headers: { Authorization: `Bearer ${token}` }, timeout: 45000 }
+      );
+      
+      setSuccessMessage(`Friend request sent to ${username}!`);
+      setTimeout(() => setSuccessMessage(''), 3000);
+      
+      // Refresh friends list to update any changes
+      fetchFriends();
+      
+    } catch (err) {
+      if (err.code === 'ECONNABORTED') {
+        setError(
+          'Request timed out. The backend server may be waking up or is slow to respond. ' +
+          'Please wait a few seconds and try again. ' +
+          'Backend URL: ' + import.meta.env.VITE_API_URL
+        );
+      } else {
+        const errorMsg = err.response?.data?.error || 'Failed to send friend request';
+        setError(errorMsg);
+      }
+      setTimeout(() => setError(''), 5000);
+    } finally {
+      setFriendRequestLoading(prev => ({ ...prev, [userId]: false }));
+    }
+  };
+
+
   // Sidebar user list
-  const filteredPeers = peers.filter((peer) =>
-    peer.username.toLowerCase().includes(peerSearch.toLowerCase())
+  const currentUserList = getCurrentUserList();
+  const filteredUsers = currentUserList.filter((userItem) =>
+    userItem.username.toLowerCase().includes(peerSearch.toLowerCase())
   );
 
   const ImageMessage = ({ src, isOwn, pending }) => {
@@ -386,21 +581,159 @@ const ChatPage = () => {
     );
   };
 
+  // Helper to render ticks for message status
+  function renderTicks(status) {
+    // 1 gray tick for sent, 2 gray for delivered, 2 green for read
+    if (status === "sent") {
+      return (
+        <span className="ml-2 flex items-center">
+          <svg width="16" height="16" className="inline">
+            <polyline
+              points="2,9 6,13 14,5"
+              fill="none"
+              stroke="#aaa"
+              strokeWidth="2"
+              strokeLinecap="round"
+              strokeLinejoin="round"
+            />
+          </svg>
+        </span>
+      );
+    }
+    if (status === "delivered") {
+      return (
+        <span className="ml-2 flex items-center">
+          <svg width="16" height="16" className="inline" style={{ marginRight: -4 }}>
+            <polyline
+              points="2,9 6,13 14,5"
+              fill="none"
+              stroke="#aaa"
+              strokeWidth="2"
+              strokeLinecap="round"
+              strokeLinejoin="round"
+            />
+          </svg>
+          <svg width="16" height="16" className="inline">
+            <polyline
+              points="2,9 6,13 14,5"
+              fill="none"
+              stroke="#aaa"
+              strokeWidth="2"
+              strokeLinecap="round"
+              strokeLinejoin="round"
+            />
+          </svg>
+        </span>
+      );
+    }
+    if (status === "read") {
+      return (
+        <span className="ml-2 flex items-center">
+          <svg width="16" height="16" className="inline" style={{ marginRight: -4 }}>
+            <polyline
+              points="2,9 6,13 14,5"
+              fill="none"
+              stroke="#22c55e"
+              strokeWidth="2"
+              strokeLinecap="round"
+              strokeLinejoin="round"
+            />
+          </svg>
+          <svg width="16" height="16" className="inline">
+            <polyline
+              points="2,9 6,13 14,5"
+              fill="none"
+              stroke="#22c55e"
+              strokeWidth="2"
+              strokeLinecap="round"
+              strokeLinejoin="round"
+            />
+          </svg>
+        </span>
+      );
+    }
+    return null;
+  }
+
+  // MessagePlayer component with read receipt ticks
   const MessagePlayer = ({ message, isOwn }) => {
     if (!message) return null;
-    if (message.type === "image") return <ImageMessage src={message.content} isOwn={isOwn} pending={message.pending} />;
-    if (message.type === "voice") return <VoiceMessage src={message.content} pending={message.pending} />;
+    // Show ticks for own text/image/voice messages
+    const showTicks = isOwn && (message.type === "text" || message.type === "image" || message.type === "voice");
     return (
-      <span className="break-words whitespace-pre-line text-base leading-relaxed">
-        {message.content}
+      <span className="break-words whitespace-pre-line text-base leading-relaxed flex items-end gap-1">
+        {/* ...existing code for content... */}
+        {message.type === "image" ? (
+          <ImageMessage src={message.content} isOwn={isOwn} pending={message.pending} />
+        ) : message.type === "voice" ? (
+          <VoiceMessage src={message.content} pending={message.pending} />
+        ) : (
+          message.content
+        )}
         {message.pending && (
           <span className="inline-block ml-2 text-xs text-gray-500">
             Sending...
           </span>
         )}
+        {showTicks && !message.pending && renderTicks(message.status)}
       </span>
     );
   };
+
+  // Helper to check if selectedPeer is already a friend
+  const isSelectedPeerFriend = selectedPeer && friends.some(f => f._id === selectedPeer._id);
+
+  // Real-time friend updates
+  useEffect(() => {
+    if (!socketRef.current) return;
+    const socket = socketRef.current;
+
+    socket.on('friend:update', () => {
+      fetchFriends();
+    });
+
+    socket.on('friend:request', () => {
+      fetchFriends();
+    });
+
+    return () => {
+      socket.off('friend:update');
+      socket.off('friend:request');
+    };
+  }, [fetchFriends]);
+
+  // Only allow sending messages if both are friends
+  const canSendMessage = selectedPeer && friends.some(f => f._id === selectedPeer._id);
+
+  // Fetch all users
+  useEffect(() => {
+    if (!token) return;
+    
+    setUsersLoading(true);
+    axios
+      .get(`${import.meta.env.VITE_API_URL}/api/user/all-users`, {
+        headers: { Authorization: `Bearer ${token}` },
+        timeout: 45000
+      })
+      .then((res) => {
+        console.log('All users loaded:', res.data);
+        setAllUsers(res.data);
+      })
+      .catch((err) => {
+        if (err.code === 'ECONNABORTED') {
+          setError(
+            'Request timed out. The backend server may be waking up or is slow to respond. ' +
+            'Please wait a few seconds and try again. ' +
+            'Backend URL: ' + import.meta.env.VITE_API_URL
+          );
+        } else {
+          setError('Error loading all users');
+        }
+      })
+      .finally(() => {
+        setUsersLoading(false);
+      });
+  }, [token]);
 
   return (
     <div className="flex h-screen bg-gradient-to-br from-dark-900 via-dark-800 to-dark-700 pt-16">
@@ -422,7 +755,9 @@ const ChatPage = () => {
         aria-label="Sidebar"
       >
         <div className="flex items-center justify-between px-6 py-4 border-b border-dark-100 dark:border-dark-700 bg-white/95 dark:bg-dark-900/90 sticky top-0 z-10">
-          <h3 className="font-bold text-xl tracking-wide">Chats</h3>
+          <h3 className="font-bold text-xl tracking-wide">
+            {activeTab === 'friends' ? 'Friends' : 'All Users'}
+          </h3>
           <button
             onClick={() => setSidebarOpen(false)}
             className="text-2xl md:hidden p-2 hover:bg-dark-100 dark:hover:bg-dark-700 rounded-full"
@@ -433,11 +768,38 @@ const ChatPage = () => {
             </svg>
           </button>
         </div>
+
+        {/* Tab Navigation */}
+        <div className="px-6 py-2 border-b border-dark-100 dark:border-dark-700">
+          <div className="flex bg-gray-100 dark:bg-gray-700 rounded-lg p-1">
+            <button
+              onClick={() => setActiveTab('friends')}
+              className={`flex-1 px-3 py-2 text-sm font-medium rounded-md transition ${
+                activeTab === 'friends'
+                  ? 'bg-white dark:bg-gray-600 text-primary-600 dark:text-primary-400 shadow-sm'
+                  : 'text-gray-600 dark:text-gray-300 hover:text-gray-900 dark:hover:text-white'
+              }`}
+            >
+              Friends ({friends.length})
+            </button>
+            <button
+              onClick={() => setActiveTab('all-users')}
+              className={`flex-1 px-3 py-2 text-sm font-medium rounded-md transition ${
+                activeTab === 'all-users'
+                  ? 'bg-white dark:bg-gray-600 text-primary-600 dark:text-primary-400 shadow-sm'
+                  : 'text-gray-600 dark:text-gray-300 hover:text-gray-900 dark:hover:text-white'
+              }`}
+            >
+              All Users
+            </button>
+          </div>
+        </div>
+
         <div className="px-6 pb-2 pt-4">
           <div className="relative">
             <input
               className="w-full px-4 py-3 pl-10 rounded-lg border border-gray-300 dark:border-dark-600 bg-white dark:bg-dark-700 text-dark-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-primary-400"
-              placeholder="Search peers"
+              placeholder={activeTab === 'friends' ? 'Search friends' : 'Search users'}
               value={peerSearch}
               onChange={(e) => setPeerSearch(e.target.value)}
               aria-label="Search users"
@@ -447,49 +809,145 @@ const ChatPage = () => {
             </svg>
           </div>
         </div>
+
+        {/* Success/Error Messages */}
+        {(successMessage || (error && !error.includes('Backend server'))) && (
+          <div className="px-6 py-2">
+            {successMessage && (
+              <div className="bg-green-50 dark:bg-green-900/20 border border-green-200 dark:border-green-800 text-green-800 dark:text-green-200 px-3 py-2 rounded-md text-sm">
+                {successMessage}
+              </div>
+            )}
+            {error && !error.includes('Backend server') && (
+              <div className="bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 text-red-800 dark:text-red-200 px-3 py-2 rounded-md text-sm">
+                {error}
+              </div>
+            )}
+          </div>
+        )}
+
         <div className="px-2 pb-4">
-          <ul>
-            {filteredPeers.length === 0 ? (
-              <li className="text-dark-400 text-center py-4">No users found.</li>
-            ) : (
-              filteredPeers.map((peer) => (
-                <li
-                  key={peer._id}
-                  className={`flex items-center gap-2 p-2 rounded-lg cursor-pointer transition ${
-                    selectedPeer?._id === peer._id
-                      ? "bg-primary-100 dark:bg-primary-900"
-                      : "hover:bg-dark-200 dark:hover:bg-dark-700"
-                  }`}
-                  onClick={() => {
-                    setSelectedPeer(peer);
-                    setSidebarOpen(false);
-                    setUnreadCounts((prev) => ({ ...prev, [peer._id]: 0 }));
-                  }}
-                >
-                  <img
-                    src={peer.profileImage || `https://ui-avatars.com/api/?name=${peer.username}`}
-                    alt=""
-                    className="w-9 h-9 rounded-full border-2 border-primary-200"
-                  />
-                  <span className="truncate flex-1 font-medium">{peer.username}</span>
-                  {unreadCounts[peer._id] > 0 && (
-                    <span className="ml-2 inline-flex items-center justify-center px-2 py-0.5 rounded-full text-xs font-bold bg-red-500 text-white min-w-[24px]">
-                      {unreadCounts[peer._id] > 4 ? "4+" : unreadCounts[peer._id]}
-                    </span>
+          {(activeTab === 'friends' ? peersLoading : usersLoading) ? (
+            <div className="text-center py-4 text-gray-500">Loading users...</div>
+          ) : error && error.includes('Backend server') ? (
+            <div className="text-center py-4 text-red-500">
+              <div>{error}</div>
+              <div className="text-xs mt-2">
+                Run: npm start in the backend folder
+              </div>
+            </div>
+          ) : (
+            <ul>
+              {filteredUsers.length === 0 ? (
+                <li className="text-dark-400 text-center py-4">
+                  {peerSearch ? 'No users found matching your search.' : (
+                    activeTab === 'friends' ? (
+                      <div>
+                        <div>No friends to chat with.</div>
+                        <div className="text-xs mt-1">Switch to "All Users" to add friends!</div>
+                      </div>
+                    ) : (
+                      'No users available.'
+                    )
                   )}
                 </li>
-              ))
-            )}
-          </ul>
+              ) : (
+                filteredUsers.map((userItem) => {
+                  const isFriend = isUserFriend(userItem._id);
+                  const canChat = activeTab === 'friends' || isFriend;
+                  const isRequestLoading = friendRequestLoading[userItem._id];
+                  
+                  return (
+                    <li
+                      key={userItem._id}
+                      className={`flex items-center gap-2 p-2 rounded-lg transition ${
+                        canChat ? 'cursor-pointer' : ''
+                      } ${
+                        selectedPeer?._id === userItem._id
+                          ? "bg-primary-100 dark:bg-primary-900"
+                          : canChat ? "hover:bg-dark-200 dark:hover:bg-dark-700" : ""
+                      }`}
+                      onClick={() => {
+                        if (canChat) {
+                          setSelectedPeer(userItem);
+                          setSidebarOpen(false);
+                          setUnreadCounts((prev) => ({ ...prev, [userItem._id]: 0 }));
+                        }
+                      }}
+                    >
+                      <img
+                        src={userItem.profileImage || `https://ui-avatars.com/api/?name=${userItem.username}`}
+                        alt=""
+                        className="w-9 h-9 rounded-full border-2 border-primary-200"
+                      />
+                      <div className="flex-1 min-w-0">
+                        <span className="truncate font-medium block">{userItem.username}</span>
+                        {activeTab === 'all-users' && (
+                          <span className={`text-xs ${isFriend ? 'text-green-600 dark:text-green-400' : 'text-gray-500'}`}>
+                            {isFriend ? '✓ Friend' : 'Not a friend'}
+                          </span>
+                        )}
+                      </div>
+                      
+                      {/* Action buttons for All Users tab */}
+                      {activeTab === 'all-users' && !isFriend && (
+                        <motion.button
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            handleSendFriendRequest(userItem._id, userItem.username);
+                          }}
+                          disabled={isRequestLoading}
+                          className={`px-3 py-1 text-xs rounded-full transition ${
+                            isRequestLoading 
+                              ? 'bg-gray-300 dark:bg-gray-600 text-gray-500 cursor-not-allowed'
+                              : 'bg-primary-500 text-white hover:bg-primary-600'
+                          }`}
+                          whileHover={!isRequestLoading ? { scale: 1.05 } : {}}
+                          whileTap={!isRequestLoading ? { scale: 0.95 } : {}}
+                        >
+                          {isRequestLoading ? (
+                            <div className="flex items-center gap-1">
+                              <div className="w-3 h-3 border border-gray-400 border-t-transparent rounded-full animate-spin"></div>
+                              <span>Sending...</span>
+                            </div>
+                          ) : (
+                            'Add Friend'
+                          )}
+                        </motion.button>
+                      )}
+                      
+                      {/* Friend status indicator for All Users tab */}
+                      {activeTab === 'all-users' && isFriend && (
+                        <div className="flex items-center gap-1 px-2 py-1 bg-green-100 dark:bg-green-900/30 text-green-700 dark:text-green-300 text-xs rounded-full">
+                          <svg className="w-3 h-3" fill="currentColor" viewBox="0 0 20 20">
+                            <path fillRule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clipRule="evenodd" />
+                          </svg>
+                          <span>Friends</span>
+                        </div>
+                      )}
+                      
+                      {/* Chat indicator for friends */}
+                      {activeTab === 'friends' && unreadCounts[userItem._id] > 0 && (
+                        <span className="ml-2 inline-flex items-center justify-center px-2 py-0.5 rounded-full text-xs font-bold bg-red-500 text-white min-w-[24px]">
+                          {unreadCounts[userItem._id] > 4 ? "4+" : unreadCounts[userItem._id]}
+                        </span>
+                      )}
+                    </li>
+                  );
+                })
+              )}
+            </ul>
+          )}
         </div>
       </aside>
+
       {/* Overlay for mobile sidebar */}
       {sidebarOpen && (
         <div
           className="fixed inset-0 z-20 bg-black/50 md:hidden"
           onClick={() => setSidebarOpen(false)}
           aria-label="Sidebar overlay"
-        />
+        ></div>
       )}
       {/* Main chat area */}
       <main className="flex-1 flex flex-col relative bg-white/90 dark:bg-dark-900/95 backdrop-blur-lg rounded-l-3xl shadow-lg mx-2 my-4 overflow-hidden">
@@ -504,13 +962,29 @@ const ChatPage = () => {
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 6h16M4 12h16M4 18h16" />
             </svg>
           </button>
-          <div className="flex items-center gap-3">
+          <div className="flex items-center gap-3 relative">
             {selectedPeer && (
-              <img
-                src={selectedPeer.profileImage || `https://ui-avatars.com/api/?name=${selectedPeer.username}`}
-                alt=""
-                className="w-9 h-9 rounded-full border-2 border-primary-200"
-              />
+              <>
+                <img
+                  ref={avatarRef}
+                  src={selectedPeer.profileImage || `https://ui-avatars.com/api/?name=${selectedPeer.username}`}
+                  alt=""
+                  className="w-9 h-9 rounded-full border-2 border-primary-200 cursor-pointer"
+                  onClick={() => setShowProfileDropdown(v => !v)}
+                  title="View profile"
+                  style={{ zIndex: 20 }}
+                />
+                {showProfileDropdown && (
+                  <UserProfileDropdown
+                    user={selectedPeer}
+                    anchorRef={avatarRef}
+                    onClose={() => setShowProfileDropdown(false)}
+                    isFriend={isSelectedPeerFriend}
+                    onFriendAdded={() => setShowProfileDropdown(false)}
+                    socket={socketRef.current}
+                  />
+                )}
+              </>
             )}
             <h2 className="font-semibold text-lg truncate">
               {selectedPeer ? selectedPeer.username : "Select a user to chat"}
@@ -550,7 +1024,7 @@ const ChatPage = () => {
           <div ref={messagesEndRef} />
         </section>
         {/* Input */}
-        {selectedPeer && (
+        {selectedPeer && canSendMessage && (
           <form
             onSubmit={sendMessage}
             className="p-4 flex gap-2 border-t dark:border-dark-700 bg-white/95 dark:bg-dark-900/90 sticky bottom-0 z-10"
@@ -626,6 +1100,11 @@ const ChatPage = () => {
               Send
             </motion.button>
           </form>
+        )}
+        {selectedPeer && !canSendMessage && (
+          <div className="p-4 text-center text-red-500 bg-white/95 dark:bg-dark-900/90 sticky bottom-0 z-10">
+            You can only chat with friends. Add this user as a friend to start chatting.
+          </div>
         )}
         
         

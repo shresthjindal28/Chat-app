@@ -213,6 +213,7 @@ const AIChatPage = () => {
   const [loading, setLoading] = useState(false);
   const [imagePreview, setImagePreview] = useState(null);
   const [isGeneratingImage, setIsGeneratingImage] = useState(false);
+  const [showLoader, setShowLoader] = useState(false);
   const messagesEndRef = useRef(null);
   const fileInputRef = useRef(null);
   const [sendAnimation, setSendAnimation] = useState(false);
@@ -257,9 +258,9 @@ const AIChatPage = () => {
                 </svg>
               </div>
               <h2 className="text-3xl font-bold text-white">Access Restricted</h2>
-              <p className="text-xl text-red-400">its paid bro</p>
+              <p className="text-xl text-red-400">Premium Feature</p>
               <p className="text-gray-400 max-w-md">
-                This AI feature is restricted to authorized users only. Please contact the administrator if you believe you should have access.
+                This AI chat feature is available for premium users only. Please upgrade your account or contact support for access.
               </p>
             </div>
           </motion.div>
@@ -279,12 +280,18 @@ const AIChatPage = () => {
     };
     reader.readAsDataURL(file);
 
-    // Upload and analyze image
-    const formData = new FormData();
-    formData.append('image', file);
-
+    setShowLoader(true);
     setLoading(true);
     try {
+      const formData = new FormData();
+      formData.append('image', file);
+
+      // Show user message instantly
+      setMessages(prev => [
+        ...prev,
+        { role: 'user', content: 'Analyze this image:', image: reader.result }
+      ]);
+
       const res = await axios.post(
         `${import.meta.env.VITE_API_URL}/api/images/analyze`,
         formData,
@@ -292,118 +299,110 @@ const AIChatPage = () => {
           headers: { 
             Authorization: `Bearer ${token}`,
             'Content-Type': 'multipart/form-data'
-          }
+          },
+          timeout: 45000
         }
       );
 
       setMessages(prev => [
         ...prev,
-        { 
-          role: 'user', 
-          content: 'Analyze this image:',
-          image: reader.result
-        },
-        { 
-          role: 'assistant', 
-          content: res.data.description 
-        }
+        { role: 'assistant', content: res.data.description }
       ]);
     } catch (error) {
-      console.error('Image analysis error:', error);
+      let msg = 'Sorry, I had trouble analyzing that image. Please try again.';
+      if (error.code === 'ECONNABORTED') {
+        msg = 'Request timed out. The backend server may be waking up or is slow to respond. Please wait a few seconds and try again. Backend URL: ' + import.meta.env.VITE_API_URL;
+      }
       setMessages(prev => [
         ...prev,
-        { 
-          role: 'assistant', 
-          content: 'Sorry, I had trouble analyzing that image. Please try again.' 
-        }
+        { role: 'assistant', content: msg }
       ]);
     } finally {
       setLoading(false);
+      setShowLoader(false);
       setImagePreview(null);
     }
   };
 
   const generateImage = async () => {
     if (!input.trim()) return;
-    
     setIsGeneratingImage(true);
     setLoading(true);
-    
+    setShowLoader(true);
+
+    // Show user message instantly
+    setMessages(prev => [
+      ...prev,
+      { role: 'user', content: `Generate an image: ${input}` }
+    ]);
+    setInput('');
+
     try {
       const res = await axios.post(
         `${import.meta.env.VITE_API_URL}/api/images/generate`,
         { prompt: input },
-        { headers: { Authorization: `Bearer ${token}` } }
+        { headers: { Authorization: `Bearer ${token}` }, timeout: 45000 }
       );
 
       setMessages(prev => [
         ...prev,
-        { 
-          role: 'user', 
-          content: `Generate an image: ${input}` 
-        },
-        { 
-          role: 'assistant', 
-          content: 'Here is your generated image:',
-          image: res.data.imageUrl
-        }
+        { role: 'assistant', content: 'Here is your generated image:', image: res.data.imageUrl }
       ]);
-      
-      setInput('');
     } catch (error) {
-      console.error('Image generation error:', error);
+      let msg = 'Sorry, I had trouble generating that image. Please try again.';
+      if (error.code === 'ECONNABORTED') {
+        msg = 'Request timed out. The backend server may be waking up or is slow to respond. Please wait a few seconds and try again. Backend URL: ' + import.meta.env.VITE_API_URL;
+      }
       setMessages(prev => [
         ...prev,
-        { 
-          role: 'assistant', 
-          content: 'Sorry, I had trouble generating that image. Please try again.' 
-        }
+        { role: 'assistant', content: msg }
       ]);
     } finally {
       setIsGeneratingImage(false);
       setLoading(false);
+      setShowLoader(false);
     }
   };
 
   const sendMessage = async (e) => {
     e.preventDefault();
     if (!input.trim()) return;
-    
     setSendAnimation(true);
     setTimeout(() => setSendAnimation(false), 500);
-    
+
+    // Show user message instantly
     const userMsg = { role: 'user', content: input };
-    const userInput = input.trim();
     setMessages((msgs) => [...msgs, userMsg]);
+    const userInput = input.trim();
     setInput('');
     setLoading(true);
-    
+    setShowLoader(true);
+
     try {
       const res = await axios.post(
         `${import.meta.env.VITE_API_URL}/api/ai/chat`,
         { message: userInput },
         { 
           headers: { Authorization: `Bearer ${token}` },
-          timeout: 30000
+          timeout: 45000
         }
       );
-      
-      setTimeout(() => {
-        setMessages((msgs) => [
-          ...msgs,
-          { role: 'assistant', content: res.data.reply }
-        ]);
-        setLoading(false);
-      }, 1200);
-      
+      setMessages((msgs) => [
+        ...msgs,
+        { role: 'assistant', content: res.data.reply }
+      ]);
     } catch (err) {
-      console.error('AI chat error:', err);
       let errorMessage = err.response?.data?.error || 'Error sending message';
+      if (err.code === 'ECONNABORTED') {
+        errorMessage = 'Request timed out. The backend server may be waking up or is slow to respond. Please wait a few seconds and try again. Backend URL: ' + import.meta.env.VITE_API_URL;
+      }
       setMessages((msgs) => [
         ...msgs,
         { role: 'assistant', content: 'Error: ' + errorMessage }
       ]);
+    } finally {
       setLoading(false);
+      setShowLoader(false);
     }
   };
 
@@ -440,6 +439,14 @@ const AIChatPage = () => {
 
   return (
     <>
+      {/* <Helmet>
+        <title>AI Chat Assistant | ChatConnect</title>
+        <meta name="description" content="Chat with an AI assistant, generate and analyze images using OpenAI. Fast, interactive, and secure." />
+        <meta name="robots" content="index,follow" />
+        <meta property="og:title" content="AI Chat Assistant | ChatConnect" />
+        <meta property="og:description" content="Chat with an AI assistant, generate and analyze images using OpenAI. Fast, interactive, and secure." />
+        <meta property="og:type" content="website" />
+      </Helmet> */}
       <ThreeBackground orbs={8} />
       <motion.div 
         className="flex flex-col items-center justify-center min-h-screen pt-20 px-4"
@@ -509,20 +516,15 @@ const AIChatPage = () => {
               ))}
             </AnimatePresence>
             
-            {loading && (
+            {/* Loader for fast feedback */}
+            {(loading || showLoader) && (
               <motion.div 
                 className="flex justify-start"
                 initial={{ opacity: 0, y: 10 }}
                 animate={{ opacity: 1, y: 0 }}
               >
                 <div className="bg-dark-700/80 p-4 rounded-2xl rounded-tl-none border border-dark-600/30 h-12 w-20 flex items-center justify-center">
-                  <div className="w-12 h-6">
-                    <Lottie 
-                      animationData={thinkingAnimation} 
-                      loop={true} 
-                      autoplay={true}
-                    />
-                  </div>
+                  <div className="w-8 h-8 border-4 border-primary-400 border-t-transparent rounded-full animate-spin"></div>
                 </div>
               </motion.div>
             )}

@@ -151,22 +151,40 @@ const SettingsPage = () => {
     
     try {
       if (action === 'accept') {
-        await axios.post(`${import.meta.env.VITE_API_URL}/api/user/accept-friend-request/${notificationId}`, {}, {
-          headers: { Authorization: `Bearer ${token}` }
-        });
+        const response = await axios.post(
+          `${import.meta.env.VITE_API_URL}/api/user/accept-friend-request/${notificationId}`, 
+          {}, 
+          { headers: { Authorization: `Bearer ${token}` } }
+        );
+        
         setSuccess('Friend request accepted');
+        
+        // Add the new friend to the friends list if we got data back
+        if (response.data && response.data.friend) {
+          setFriends(prev => [...prev, response.data.friend]);
+        } else {
+          // If we didn't get friend data, refetch the whole list
+          axios.get(`${import.meta.env.VITE_API_URL}/api/user/friends`, {
+            headers: { Authorization: `Bearer ${token}` }
+          })
+          .then(res => setFriends(res.data))
+          .catch(() => setFriendsError('Failed to refresh friends list'));
+        }
       } else if (action === 'decline') {
-        await axios.post(`${import.meta.env.VITE_API_URL}/api/user/decline-friend-request/${notificationId}`, {}, {
-          headers: { Authorization: `Bearer ${token}` }
-        });
+        await axios.post(
+          `${import.meta.env.VITE_API_URL}/api/user/decline-friend-request/${notificationId}`, 
+          {}, 
+          { headers: { Authorization: `Bearer ${token}` } }
+        );
         setSuccess('Friend request declined');
       }
       
       // Refresh notifications after action
       setUserNotifications(prev => prev.filter(n => n._id !== notificationId));
+      
     } catch (err) {
       console.error('Error handling friend request:', err);
-      setError('Failed to process friend request');
+      setError(err.response?.data?.error || 'Failed to process friend request');
     } finally {
       setNotificationActionInProgress(null);
     }
@@ -357,27 +375,46 @@ const SettingsPage = () => {
                     .filter(notif => notif.type === 'friendRequest' && !notif.read)
                     .map(notif => (
                       <li key={notif._id} className="flex items-center justify-between bg-gray-100 dark:bg-gray-700 p-4 rounded-lg">
-                        <div>
-                          <p className="font-medium">{notif.senderName || 'Someone'} sent you a friend request</p>
-                          <p className="text-sm text-gray-600 dark:text-gray-300">
-                            {new Date(notif.createdAt).toLocaleDateString()}
-                          </p>
+                        <div className="flex items-center gap-3">
+                          {/* Add user avatar if available */}
+                          {notif.sender && notif.sender.profileImage && (
+                            <img 
+                              src={notif.sender.profileImage} 
+                              alt="" 
+                              className="w-10 h-10 rounded-full object-cover border-2 border-primary-200"
+                            />
+                          )}
+                          <div>
+                            <p className="font-medium">
+                              {/* Use populated sender name or fall back to senderName field */}
+                              <span className="text-primary-500">
+                                {notif.sender?.username || notif.senderName || 'Someone'}
+                              </span> sent you a friend request
+                            </p>
+                            <p className="text-sm text-gray-600 dark:text-gray-300">
+                              {new Date(notif.createdAt).toLocaleDateString()} at {new Date(notif.createdAt).toLocaleTimeString()}
+                            </p>
+                          </div>
                         </div>
                         <div className="flex gap-2">
-                          <button
-                            className="px-4 py-2 bg-primary-500 text-white rounded-md hover:bg-primary-600 transition"
+                          <motion.button
+                            whileHover={{ scale: 1.05 }}
+                            whileTap={{ scale: 0.95 }}
+                            className="px-4 py-2 bg-primary-500 text-white rounded-md hover:bg-primary-600 transition shadow-sm"
                             onClick={() => handleFriendRequest(notif._id, 'accept')}
                             disabled={notificationActionInProgress === notif._id}
                           >
                             {notificationActionInProgress === notif._id ? '...' : 'Accept'}
-                          </button>
-                          <button
-                            className="px-4 py-2 bg-gray-300 dark:bg-gray-600 text-dark-800 dark:text-gray-200 rounded-md hover:bg-gray-400 dark:hover:bg-gray-500 transition"
+                          </motion.button>
+                          <motion.button
+                            whileHover={{ scale: 1.05 }}
+                            whileTap={{ scale: 0.95 }}
+                            className="px-4 py-2 bg-gray-300 dark:bg-gray-600 text-gray-800 dark:text-gray-200 rounded-md hover:bg-gray-400 dark:hover:bg-gray-500 transition shadow-sm"
                             onClick={() => handleFriendRequest(notif._id, 'decline')}
                             disabled={notificationActionInProgress === notif._id}
                           >
                             {notificationActionInProgress === notif._id ? '...' : 'Decline'}
-                          </button>
+                          </motion.button>
                         </div>
                       </li>
                     ))}
@@ -391,11 +428,42 @@ const SettingsPage = () => {
                     {userNotifications
                       .filter(notif => notif.type === 'friendAccepted' && !notif.read)
                       .map(notif => (
-                        <li key={notif._id} className="bg-gray-100 dark:bg-gray-700 p-3 rounded-lg">
-                          <p>{notif.senderName || 'Someone'} accepted your friend request</p>
-                          <p className="text-sm text-gray-600 dark:text-gray-300">
-                            {new Date(notif.createdAt).toLocaleDateString()}
-                          </p>
+                        <li key={notif._id} className="bg-gray-100 dark:bg-gray-700 p-4 rounded-lg flex items-center gap-3">
+                          {/* Add user avatar if available */}
+                          {notif.sender && notif.sender.profileImage && (
+                            <img 
+                              src={notif.sender.profileImage} 
+                              alt="" 
+                              className="w-10 h-10 rounded-full object-cover border-2 border-green-200"
+                            />
+                          )}
+                          <div>
+                            <p className="font-medium">
+                              <span className="text-green-500">
+                                {notif.sender?.username || notif.senderName || 'Someone'}
+                              </span> accepted your friend request
+                            </p>
+                            <p className="text-sm text-gray-600 dark:text-gray-300">
+                              {new Date(notif.createdAt).toLocaleDateString()}
+                            </p>
+                          </div>
+                          <button
+                            onClick={() => {
+                              // Mark as read
+                              setUserNotifications(prev => 
+                                prev.map(n => n._id === notif._id ? {...n, read: true} : n)
+                              );
+                              
+                              // API call to mark as read
+                              axios.post(`${import.meta.env.VITE_API_URL}/api/user/mark-notifications-read`, 
+                                { ids: [notif._id] },
+                                { headers: { Authorization: `Bearer ${token}` } }
+                              ).catch(err => console.error("Failed to mark notification as read", err));
+                            }}
+                            className="ml-auto text-sm text-gray-500 hover:text-gray-700 dark:hover:text-gray-300"
+                          >
+                            Dismiss
+                          </button>
                         </li>
                       ))}
                   </ul>

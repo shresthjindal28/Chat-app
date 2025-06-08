@@ -25,6 +25,9 @@ const SettingsPage = lazy(() => import('./pages/SettingsPage'));
 const FindUsersPage = lazy(() => import('./pages/FindUsersPage'));
 const PublicProfilePage = lazy(() => import('./pages/PublicProfilePage'));
 const LogoutPage = lazy(() => import('./pages/LogoutPage'));
+const AboutPage = lazy(() => import('./pages/AboutPage'));
+const ContactPage = lazy(() => import('./pages/ContactPage'));
+const DocsPage = lazy(() => import('./pages/DocsPage'));
 
 // Loading fallback
 const LoadingFallback = () => (
@@ -51,6 +54,21 @@ const App = () => {
               <Route path="/" element={<LandingPage />} />
               <Route path="/login" element={<LoginPage />} />
               <Route path="/signup" element={<SignupPage />} />
+              <Route path="/about" element={
+                <Suspense fallback={<LoadingFallback />}>
+                  <AboutPage />
+                </Suspense>
+              } />
+              <Route path="/contact" element={
+                <Suspense fallback={<LoadingFallback />}>
+                  <ContactPage />
+                </Suspense>
+              } />
+              <Route path="/docs" element={
+                <Suspense fallback={<LoadingFallback />}>
+                  <DocsPage />
+                </Suspense>
+              } />
               
               {/* Protected routes with lazy loading */}
               <Route path="/dashboard" element={

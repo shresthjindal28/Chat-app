@@ -29,18 +29,41 @@ const LoginPage = () => {
       const res = await axios.post(
         `${import.meta.env.VITE_API_URL}/api/auth/login`,
         formData,
-        { timeout: 5000 }
+        { 
+          timeout: 30000, // Increased to 30 seconds
+          headers: {
+            'Content-Type': 'application/json'
+          },
+          withCredentials: true
+        }
       );
       login(res.data.user, res.data.token);
       setLoading(false);
       navigate('/dashboard');
     } catch (err) {
       setLoading(false);
-      setError(
-        err?.response?.data?.error ||
-        err?.message ||
-        'Login failed. Please try again.'
-      );
+      console.error('Login error:', err);
+      
+      // Better error handling
+      if (err.code === 'ECONNABORTED') {
+        setError(
+          'Request timed out. The backend server may be waking up or is slow to respond. ' +
+          'Please wait a few seconds and try again. ' +
+          'Backend URL: ' + import.meta.env.VITE_API_URL
+        );
+      } else if (err.code === 'ERR_NETWORK') {
+        setError('Cannot connect to server. Please check if the backend is running at ' + import.meta.env.VITE_API_URL);
+      } else if (err.response?.status === 401) {
+        setError('Invalid email or password.');
+      } else if (err.response?.status >= 500) {
+        setError('Server error. Please try again later.');
+      } else {
+        setError(
+          err?.response?.data?.error ||
+          err?.message ||
+          'Login failed. Please try again.'
+        );
+      }
     }
   };
 
