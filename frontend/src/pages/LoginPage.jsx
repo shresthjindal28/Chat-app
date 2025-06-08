@@ -30,7 +30,7 @@ const LoginPage = () => {
         `${import.meta.env.VITE_API_URL}/api/auth/login`,
         formData,
         { 
-          timeout: 30000, // Increased to 30 seconds
+          timeout: 30000,
           headers: {
             'Content-Type': 'application/json'
           },
@@ -44,17 +44,12 @@ const LoginPage = () => {
       setLoading(false);
       console.error('Login error:', err);
       
-      // Better error handling
       if (err.code === 'ECONNABORTED') {
-        setError(
-          'Request timed out. The backend server may be waking up or is slow to respond. ' +
-          'Please wait a few seconds and try again. ' +
-          'Backend URL: ' + import.meta.env.VITE_API_URL
-        );
+        setError('Request timed out. Please try again.');
       } else if (err.code === 'ERR_NETWORK') {
-        setError('Cannot connect to server. Please check if the backend is running at ' + import.meta.env.VITE_API_URL);
+        setError('Cannot connect to server. Please check your connection.');
       } else if (err.response?.status === 401) {
-        setError('Invalid email or password.');
+        setError(err.response.data?.error || 'Invalid email or password.');
       } else if (err.response?.status >= 500) {
         setError('Server error. Please try again later.');
       } else {
